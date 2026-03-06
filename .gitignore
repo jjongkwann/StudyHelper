@@ -1,0 +1,11 @@
+PLAN/
+PROGRESS/
+references/
+
+# App
+app/node_modules/
+app/.next/
+app/.env
+app/prisma/dev.db
+app/prisma/dev.db-journal
+app/src/generated/

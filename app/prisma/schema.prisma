@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  contentPath String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chapters      Chapter[]
+  studySessions StudySession[]
+}
+
+model Chapter {
+  id          String @id @default(cuid())
+  projectId   String
+  title       String
+  order       Int
+  sourceFile  String
+  contentHash String
+  rawContent  String
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  concepts Concept[]
+
+  @@unique([projectId, sourceFile])
+}
+
+model Concept {
+  id         String @id @default(cuid())
+  chapterId  String
+  title      String
+  content    String
+  bloomLevel Int    @default(1)
+  order      Int
+
+  chapter        Chapter         @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  studyProgress  StudyProgress[]
+  quizAttempts   QuizAttempt[]
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  projectId String
+  type      String
+  metadata  String?
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quizAttempts QuizAttempt[]
+}
+
+model StudyProgress {
+  id               String   @id @default(cuid())
+  conceptId        String   @unique
+  bloomLevelReached Int     @default(0)
+  mastery          Int      @default(0)
+  easeFactor       Float    @default(2.5)
+  intervalDays     Int      @default(0)
+  repetitions      Int      @default(0)
+  nextReviewAt     DateTime?
+  totalAttempts    Int      @default(0)
+  correctAttempts  Int      @default(0)
+  consecutiveFails Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+}
+
+model QuizAttempt {
+  id         String   @id @default(cuid())
+  sessionId  String
+  conceptId  String
+  question   String
+  userAnswer String
+  aiFeedback String?
+  score      Int      @default(0)
+  bloomLevel Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  concept Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+}
