@@ -11,6 +11,10 @@ interface ProjectSummary {
   name: string;
   slug: string;
   description: string | null;
+  status: string;
+  importStep: string | null;
+  importProgress: number | null;
+  errorMessage: string | null;
   chapterCount: number;
   totalConcepts: number;
   learnedConcepts: number;
@@ -29,7 +33,8 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const totalReviewDue = projects.reduce((sum, p) => sum + p.reviewDue, 0);
+  const readyProjects = projects.filter((p) => p.status === "ready");
+  const totalReviewDue = readyProjects.reduce((sum, p) => sum + p.reviewDue, 0);
 
   if (loading) {
     return <div className="text-muted-foreground">Loading...</div>;
@@ -52,7 +57,12 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{projects.length}</div>
+            <div className="text-3xl font-bold">{readyProjects.length}</div>
+            {projects.length !== readyProjects.length && (
+              <p className="text-xs text-muted-foreground">
+                +{projects.length - readyProjects.length} 임포트 중/실패
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -79,10 +89,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {projects.length > 0
+              {readyProjects.length > 0
                 ? Math.round(
-                    projects.reduce((sum, p) => sum + p.progress, 0) /
-                      projects.length
+                    readyProjects.reduce((sum, p) => sum + p.progress, 0) /
+                      readyProjects.length
                   )
                 : 0}
               %
@@ -107,13 +117,32 @@ export default function DashboardPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {projects.map((project) => (
-            <Link key={project.id} href={`/projects/${project.slug}`}>
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+          {projects.map((project) => {
+            const isReady = project.status === "ready";
+            const isProcessing =
+              project.status === "pending" || project.status === "processing";
+            const isFailed = project.status === "failed";
+
+            const card = (
+              <Card
+                className={`transition-colors ${
+                  isReady
+                    ? "hover:border-primary/50 cursor-pointer"
+                    : isFailed
+                      ? "border-red-300 dark:border-red-800"
+                      : "border-yellow-300 dark:border-yellow-800"
+                }`}
+              >
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>{project.name}</CardTitle>
-                    {project.reviewDue > 0 && (
+                    {isProcessing && (
+                      <Badge variant="secondary">임포트 중</Badge>
+                    )}
+                    {isFailed && (
+                      <Badge variant="destructive">실패</Badge>
+                    )}
+                    {isReady && project.reviewDue > 0 && (
                       <Badge variant="destructive">
                         복습 {project.reviewDue}
                       </Badge>
@@ -126,22 +155,48 @@ export default function DashboardPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>
-                        {project.learnedConcepts}/{project.totalConcepts} 개념
-                      </span>
-                      <span>{project.progress}%</span>
+                  {isProcessing && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        {project.importStep || "준비 중..."}
+                      </p>
+                      <Progress
+                        value={(project.importProgress ?? 0) * 100}
+                      />
                     </div>
-                    <Progress value={project.progress} />
-                    <div className="text-xs text-muted-foreground">
-                      {project.chapterCount}개 챕터
+                  )}
+                  {isFailed && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {project.errorMessage || "알 수 없는 오류"}
+                    </p>
+                  )}
+                  {isReady && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>
+                          {project.learnedConcepts}/{project.totalConcepts} 개념
+                        </span>
+                        <span>{project.progress}%</span>
+                      </div>
+                      <Progress value={project.progress} />
+                      <div className="text-xs text-muted-foreground">
+                        {project.chapterCount}개 챕터
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            );
+
+            if (isReady) {
+              return (
+                <Link key={project.id} href={`/projects/${project.slug}`}>
+                  {card}
+                </Link>
+              );
+            }
+            return <div key={project.id}>{card}</div>;
+          })}
         </div>
       )}
     </div>

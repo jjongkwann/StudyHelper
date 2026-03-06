@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -21,9 +22,14 @@ interface ProjectSummary {
   name: string;
   slug: string;
   description: string | null;
+  status: string;
+  importStep: string | null;
+  importProgress: number | null;
+  errorMessage: string | null;
   chapterCount: number;
   totalConcepts: number;
   learnedConcepts: number;
+  reviewDue: number;
   progress: number;
 }
 
@@ -39,16 +45,33 @@ export default function ProjectsPage() {
     contentPath: "",
   });
 
-  const fetchProjects = () => {
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchProjects = useCallback(() => {
     fetch("/api/projects")
       .then((r) => r.json())
-      .then(setProjects)
+      .then((data: ProjectSummary[]) => {
+        setProjects(data);
+        // 진행 중인 프로젝트가 있으면 폴링 시작
+        const hasProcessing = data.some(
+          (p) => p.status === "pending" || p.status === "processing"
+        );
+        if (hasProcessing && !pollingRef.current) {
+          pollingRef.current = setInterval(() => fetchProjects(), 3000);
+        } else if (!hasProcessing && pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      })
       .finally(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [fetchProjects]);
 
   const handleCreate = async () => {
     if (!form.name || !form.slug || !form.contentPath) return;
@@ -158,11 +181,41 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((project) => (
-            <Link key={project.id} href={`/projects/${project.slug}`}>
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+          {projects.map((project) => {
+            const isReady = project.status === "ready";
+            const isProcessing =
+              project.status === "pending" || project.status === "processing";
+            const isFailed = project.status === "failed";
+
+            const cardContent = (
+              <Card
+                className={`transition-colors h-full ${
+                  isReady
+                    ? "hover:border-primary/50 cursor-pointer"
+                    : isFailed
+                      ? "border-red-300 dark:border-red-800"
+                      : "border-yellow-300 dark:border-yellow-800"
+                }`}
+              >
                 <CardHeader>
-                  <CardTitle>{project.name}</CardTitle>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="truncate">{project.name}</CardTitle>
+                    {isProcessing && (
+                      <Badge variant="secondary" className="shrink-0">
+                        임포트 중
+                      </Badge>
+                    )}
+                    {isFailed && (
+                      <Badge variant="destructive" className="shrink-0">
+                        실패
+                      </Badge>
+                    )}
+                    {isReady && project.reviewDue > 0 && (
+                      <Badge variant="destructive" className="shrink-0">
+                        복습 {project.reviewDue}
+                      </Badge>
+                    )}
+                  </div>
                   {project.description && (
                     <p className="text-sm text-muted-foreground">
                       {project.description}
@@ -170,22 +223,53 @@ export default function ProjectsPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>
-                        {project.learnedConcepts}/{project.totalConcepts} 개념
-                      </span>
-                      <span>{project.progress}%</span>
+                  {isProcessing && (
+                    <div className="space-y-2">
+                      <div className="text-sm text-muted-foreground">
+                        {project.importStep || "준비 중..."}
+                      </div>
+                      <Progress
+                        value={(project.importProgress ?? 0) * 100}
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        {Math.round((project.importProgress ?? 0) * 100)}%
+                      </div>
                     </div>
-                    <Progress value={project.progress} />
-                    <div className="text-xs text-muted-foreground">
-                      {project.chapterCount}개 챕터
+                  )}
+                  {isFailed && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        {project.errorMessage || "알 수 없는 오류"}
+                      </p>
                     </div>
-                  </div>
+                  )}
+                  {isReady && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>
+                          {project.learnedConcepts}/{project.totalConcepts} 개념
+                        </span>
+                        <span>{project.progress}%</span>
+                      </div>
+                      <Progress value={project.progress} />
+                      <div className="text-xs text-muted-foreground">
+                        {project.chapterCount}개 챕터
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            );
+
+            if (isReady) {
+              return (
+                <Link key={project.id} href={`/projects/${project.slug}`}>
+                  {cardContent}
+                </Link>
+              );
+            }
+            return <div key={project.id}>{cardContent}</div>;
+          })}
         </div>
       )}
     </div>

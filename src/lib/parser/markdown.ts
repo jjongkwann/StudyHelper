@@ -87,7 +87,7 @@ export async function scanMarkdownFiles(dirPath: string): Promise<string[]> {
     const entries = await readdir(dirPath);
 
     for (const entry of entries) {
-      if (entry.startsWith("_") || entry.startsWith(".")) continue;
+      if (entry.startsWith(".")) continue;
 
       const fullPath = join(dirPath, entry);
       const stats = await stat(fullPath);
@@ -96,6 +96,8 @@ export async function scanMarkdownFiles(dirPath: string): Promise<string[]> {
         const subFiles = await scanMarkdownFiles(fullPath);
         results.push(...subFiles);
       } else if (entry.endsWith(".md")) {
+        // "1. xxx.md" 같은 인덱스/목차 파일 제외
+        if (/^\d+\.\s/.test(entry)) continue;
         results.push(fullPath);
       }
     }

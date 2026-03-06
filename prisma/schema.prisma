@@ -8,13 +8,17 @@ datasource db {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  contentPath String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  description  String?
+  contentPath  String
+  status       String   @default("pending") // pending | processing | ready | failed
+  importStep   String?  // 현재 진행 단계 설명
+  importProgress Float? // 0.0 ~ 1.0
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   chapters      Chapter[]
   studySessions StudySession[]
@@ -32,7 +36,7 @@ model Chapter {
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   concepts Concept[]
 
-  @@unique([projectId, sourceFile])
+  @@index([projectId])
 }
 
 model Concept {
