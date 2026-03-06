@@ -237,10 +237,21 @@ export default function ProjectsPage() {
                     </div>
                   )}
                   {isFailed && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <p className="text-sm text-red-600 dark:text-red-400">
                         {project.errorMessage || "알 수 없는 오류"}
                       </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          fetch(`/api/projects/${project.slug}/retry`, {
+                            method: "POST",
+                          }).then(() => fetchProjects());
+                        }}
+                      >
+                        재시도
+                      </Button>
                     </div>
                   )}
                   {isReady && (

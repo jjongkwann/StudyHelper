@@ -1,0 +1,60 @@
+import { Prisma } from "@prisma/client";
+import { projectRepo } from "@/infrastructure/db/repositories/project";
+import { runImportWorkflow, retryImportWorkflow } from "@/workflows/import-project";
+
+export const projectService = {
+  async list() {
+    return projectRepo.listWithStats();
+  },
+
+  async getDetail(slug: string) {
+    return projectRepo.getDetail(slug);
+  },
+
+  async getStatus(slug: string) {
+    const project = await projectRepo.findBySlug(slug);
+    if (!project) return null;
+    return {
+      id: project.id,
+      status: project.status,
+      importStep: project.importStep,
+      importProgress: project.importProgress,
+      errorMessage: project.errorMessage,
+    };
+  },
+
+  /** Create project and start background import. Returns immediately. */
+  async create(data: { name: string; slug: string; description?: string; contentPath: string }) {
+    const project = await projectRepo.create(data);
+
+    // Fire-and-forget background import
+    runImportWorkflow(project.id).catch((err) => {
+      console.error("Background import error:", err);
+    });
+
+    return {
+      id: project.id,
+      slug: project.slug,
+      status: "pending" as const,
+    };
+  },
+
+  /** Retry a failed import */
+  async retry(slug: string) {
+    const project = await projectRepo.findBySlug(slug);
+    if (!project) return { error: "not_found" as const };
+    if (project.status !== "failed") return { error: "not_failed" as const };
+
+    await projectRepo.updateStatus(project.id, "pending", {
+      importStep: "재시도 준비 중...",
+      importProgress: 0,
+      errorMessage: null,
+    });
+
+    retryImportWorkflow(project.id).catch((err) => {
+      console.error("Retry import error:", err);
+    });
+
+    return { id: project.id, slug: project.slug, status: "pending" as const };
+  },
+};

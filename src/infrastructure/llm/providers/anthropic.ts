@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AIProvider, GenerateOptions } from "./types";
+import type { LLMProvider, LLMOptions } from "../types";
 
-export class AnthropicProvider implements AIProvider {
+export class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
   private model: string;
 
@@ -10,7 +10,7 @@ export class AnthropicProvider implements AIProvider {
     this.model = model;
   }
 
-  async generate(prompt: string, options?: GenerateOptions): Promise<string> {
+  async generate(prompt: string, options?: LLMOptions): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: options?.maxTokens ?? 4096,
@@ -19,9 +19,6 @@ export class AnthropicProvider implements AIProvider {
     });
 
     const block = response.content[0];
-    if (block.type === "text") {
-      return block.text;
-    }
-    return "";
+    return block.type === "text" ? block.text : "";
   }
 }
