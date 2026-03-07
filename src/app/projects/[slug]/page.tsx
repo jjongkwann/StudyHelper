@@ -278,7 +278,7 @@ export default function ProjectDetailPage() {
                         </p>
                       </div>
                     </div>
-                    <Link href={`/projects/${slug}/learn`} className="sm:pt-1">
+                    <Link href={`/projects/${slug}/learn/${chapter.id}`} className="sm:pt-1">
                       <Button variant="outline" size="sm" className="rounded-full">
                         <BookOpen className="size-4" />
                         학습하기
@@ -326,9 +326,10 @@ export default function ProjectDetailPage() {
                   {expanded && (
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                       {chapter.concepts.map((concept) => (
-                        <div
+                        <Link
                           key={concept.id}
-                          className="flex items-center justify-between rounded-2xl border border-border/60 bg-background px-4 py-3 text-sm"
+                          href={`/projects/${slug}/learn/${chapter.id}?conceptId=${concept.id}`}
+                          className="flex items-center justify-between rounded-2xl border border-border/60 bg-background px-4 py-3 text-sm transition-colors hover:border-primary/50 hover:bg-muted/30"
                         >
                           <div className="min-w-0">
                             <div className="truncate font-medium">
@@ -358,7 +359,7 @@ export default function ProjectDetailPage() {
                               미학습
                             </Badge>
                           )}
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   )}
