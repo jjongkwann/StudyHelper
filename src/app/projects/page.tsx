@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Edit3, FolderUp, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ const emptyEditForm = {
 };
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -458,14 +459,21 @@ export default function ProjectsPage() {
                 className={`relative h-full gap-0 border-border/60 py-0 transition-colors ${
                   isReady ? "cursor-pointer hover:border-primary/50 hover:bg-muted/20" : ""
                 }`}
+                onClick={() => {
+                  if (isReady) {
+                    router.push(`/projects/${project.slug}`);
+                  }
+                }}
+                role={isReady ? "link" : undefined}
+                tabIndex={isReady ? 0 : undefined}
+                onKeyDown={(e) => {
+                  if (!isReady) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/projects/${project.slug}`);
+                  }
+                }}
               >
-                {isReady && (
-                  <Link
-                    href={`/projects/${project.slug}`}
-                    className="absolute inset-0 z-0 rounded-xl"
-                    aria-label={`${project.name} 열기`}
-                  />
-                )}
                 <CardHeader className="gap-3 px-5 py-4">
                   <div className="relative z-10 flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -481,17 +489,28 @@ export default function ProjectsPage() {
                           size="icon-sm"
                           className="rounded-full"
                           aria-label={`${project.name} 관리 메뉴`}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <MoreHorizontal className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditDialog(project)}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditDialog(project);
+                          }}
+                        >
                           <Edit3 className="size-4" />
                           수정
                         </DropdownMenuItem>
                         {isFailed && (
-                          <DropdownMenuItem onClick={() => handleRetry(project)}>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRetry(project);
+                            }}
+                          >
                             <RotateCcw className="size-4" />
                             재시도
                           </DropdownMenuItem>
@@ -499,7 +518,10 @@ export default function ProjectsPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant="destructive"
-                          onClick={() => handleDelete(project)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(project);
+                          }}
                           disabled={isProcessing || deleting}
                         >
                           <Trash2 className="size-4" />
@@ -566,7 +588,10 @@ export default function ProjectsPage() {
                       <Button
                         variant="outline"
                         className="w-full rounded-2xl"
-                        onClick={() => handleRetry(project)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRetry(project);
+                        }}
                       >
                         <RotateCcw className="size-4" />
                         재시도

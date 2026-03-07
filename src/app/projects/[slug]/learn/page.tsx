@@ -40,6 +40,20 @@ export default function LearnHubPage() {
   return (
     <div className="space-y-6">
       <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/projects" className="transition-colors hover:text-foreground">
+            프로젝트
+          </Link>
+          <span>/</span>
+          <Link
+            href={`/projects/${slug}`}
+            className="transition-colors hover:text-foreground"
+          >
+            프로젝트 상세
+          </Link>
+          <span>/</span>
+          <span className="text-foreground">학습 모드</span>
+        </div>
         <h1 className="text-3xl font-bold">학습 모드</h1>
         <p className="mt-1 text-muted-foreground">시작할 챕터를 선택하세요</p>
         <p className="mt-2 text-xs text-muted-foreground">
