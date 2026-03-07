@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { projectRepo } from "@/infrastructure/db/repositories/project";
 import { runImportWorkflow, retryImportWorkflow } from "@/workflows/import-project";
 
@@ -37,6 +36,33 @@ export const projectService = {
       slug: project.slug,
       status: "pending" as const,
     };
+  },
+
+  async update(
+    slug: string,
+    data: { name: string; description?: string }
+  ) {
+    const project = await projectRepo.findBySlug(slug);
+    if (!project) return { error: "not_found" as const };
+
+    const updated = await projectRepo.update(project.id, data);
+    return {
+      id: updated.id,
+      slug: updated.slug,
+      name: updated.name,
+      description: updated.description,
+    };
+  },
+
+  async delete(slug: string) {
+    const project = await projectRepo.findBySlug(slug);
+    if (!project) return { error: "not_found" as const };
+    if (project.status === "pending" || project.status === "processing") {
+      return { error: "busy" as const };
+    }
+
+    await projectRepo.delete(project.id);
+    return { ok: true as const };
   },
 
   /** Retry a failed import */

@@ -12,17 +12,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await studyService.evaluate({
-    sessionId,
-    conceptId,
-    question,
-    userAnswer,
-    bloomLevel,
-  });
+  try {
+    const result = await studyService.evaluate({
+      sessionId,
+      conceptId,
+      question,
+      userAnswer,
+      bloomLevel,
+    });
 
-  if (!result) {
-    return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+    if (!result) {
+      return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "답변 평가 중 AI 응답을 검증하지 못했습니다.";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
-
-  return NextResponse.json(result);
 }

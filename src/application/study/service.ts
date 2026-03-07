@@ -1,62 +1,44 @@
-import { llmGateway, safeParseJSON } from "@/infrastructure/llm/gateway";
+import { llmGateway } from "@/infrastructure/llm/gateway";
 import {
-  learnConceptPrompt,
   generateQuizPrompt,
   evaluateAnswerPrompt,
   SYSTEM_PROMPT,
 } from "@/infrastructure/llm/prompts";
+import {
+  quizQuestionsSchema,
+  evaluationSchema,
+} from "@/infrastructure/llm/schemas";
 import { studyRepo } from "@/infrastructure/db/repositories/study";
+import {
+  enqueueChapterLearnCache,
+  getOrCreateLearnContent,
+} from "./learn-cache";
 
 export const studyService = {
   async learn(conceptId: string) {
-    const concept = await studyRepo.getConceptWithChapter(conceptId);
-    if (!concept) return null;
+    return getOrCreateLearnContent(conceptId);
+  },
 
-    // Return DB-cached content if available
-    if (concept.learnCache) {
-      try {
-        return JSON.parse(concept.learnCache);
-      } catch { /* regenerate if corrupted */ }
-    }
-
-    const response = await llmGateway.generate(
-      learnConceptPrompt(
-        `${concept.title}\n${concept.content}`,
-        concept.chapter.rawContent
-      ),
-      { system: SYSTEM_PROMPT }
-    );
-
-    let result;
-    try {
-      result = safeParseJSON(response);
-    } catch {
-      result = { explanation: response, keyPoints: [], checkQuestion: null };
-    }
-
-    // Persist to DB
-    await studyRepo.cacheLearnContent(conceptId, JSON.stringify(result));
-    return result;
+  async prefetchLearnContent(chapterId: string, excludeConceptId?: string) {
+    return enqueueChapterLearnCache(chapterId, excludeConceptId);
   },
 
   async generateQuiz(chapterIds: string[], bloomLevel: number, count: number) {
     const concepts = await studyRepo.getConceptsByChapters(chapterIds);
     if (concepts.length === 0) return null;
 
-    const response = await llmGateway.generate(
+    const parsed = await llmGateway.generateAndValidate(
       generateQuizPrompt(
         concepts.map((c) => ({ title: c.title, content: c.content })),
         bloomLevel,
         count
       ),
-      { system: SYSTEM_PROMPT }
+      { system: SYSTEM_PROMPT, schema: quizQuestionsSchema, retries: 2 }
     );
-
-    const parsed = safeParseJSON(response) as { questions: { conceptTitle: string; question: string; bloomLevel: number; hints?: string[] }[] };
     const questions = parsed.questions.map(
       (q: { conceptTitle: string; question: string; bloomLevel: number; hints?: string[] }) => {
         const matched = concepts.find((c) => c.title === q.conceptTitle);
-        return { ...q, conceptId: matched?.id || concepts[0].id };
+        return { ...q, hints: q.hints || [], conceptId: matched?.id || concepts[0].id };
       }
     );
     return { questions };
@@ -72,17 +54,10 @@ export const studyService = {
     const concept = await studyRepo.getConceptWithChapter(params.conceptId);
     if (!concept) return null;
 
-    const response = await llmGateway.generate(
+    const evaluation = await llmGateway.generateAndValidate(
       evaluateAnswerPrompt(params.question, concept.content, params.userAnswer),
-      { system: SYSTEM_PROMPT }
+      { system: SYSTEM_PROMPT, schema: evaluationSchema, retries: 2 }
     );
-
-    let evaluation;
-    try {
-      evaluation = safeParseJSON(response) as { score: number; feedback: string; correctAnswer: string; weakPoints: string[] };
-    } catch {
-      evaluation = { score: 0, feedback: response, correctAnswer: "", weakPoints: [] };
-    }
 
     const score = Math.max(0, Math.min(5, evaluation.score));
     const bloomLevel = params.bloomLevel || 1;

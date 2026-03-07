@@ -50,6 +50,7 @@ export default function QuizPage() {
   const [bloomLevel, setBloomLevel] = useState("2");
   const [questionCount, setQuestionCount] = useState("5");
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Quiz
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -57,6 +58,7 @@ export default function QuizPage() {
   const [answer, setAnswer] = useState("");
   const [evaluating, setEvaluating] = useState(false);
   const [currentResult, setCurrentResult] = useState<QuizResult | null>(null);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
 
   // Results
   const [results, setResults] = useState<
@@ -78,6 +80,7 @@ export default function QuizPage() {
   const startQuiz = async () => {
     if (selectedChapters.length === 0) return;
     setGenerating(true);
+    setGenerateError(null);
     try {
       const res = await fetch("/api/ai/quiz", {
         method: "POST",
@@ -89,12 +92,17 @@ export default function QuizPage() {
         }),
       });
       const data = await res.json();
-      if (data.questions) {
-        setQuestions(data.questions);
-        setCurrentIndex(0);
-        setResults([]);
-        setPhase("quiz");
+      if (!res.ok) {
+        setGenerateError(data.error || "퀴즈를 생성하지 못했습니다.");
+        return;
       }
+
+      setQuestions(data.questions);
+      setCurrentIndex(0);
+      setCurrentResult(null);
+      setEvaluationError(null);
+      setResults([]);
+      setPhase("quiz");
     } finally {
       setGenerating(false);
     }
@@ -104,6 +112,7 @@ export default function QuizPage() {
     if (!answer.trim()) return;
     const question = questions[currentIndex];
     setEvaluating(true);
+    setEvaluationError(null);
     try {
       const res = await fetch("/api/ai/evaluate", {
         method: "POST",
@@ -116,6 +125,10 @@ export default function QuizPage() {
         }),
       });
       const result = await res.json();
+      if (!res.ok) {
+        setEvaluationError(result.error || "답변을 평가하지 못했습니다.");
+        return;
+      }
       setCurrentResult(result);
       setResults((prev) => [...prev, { question, result }]);
     } finally {
@@ -128,6 +141,7 @@ export default function QuizPage() {
       setCurrentIndex(currentIndex + 1);
       setAnswer("");
       setCurrentResult(null);
+      setEvaluationError(null);
     } else {
       setPhase("result");
     }
@@ -149,6 +163,9 @@ export default function QuizPage() {
         <div>
           <h1 className="text-3xl font-bold">퀴즈 모드</h1>
           <p className="text-muted-foreground mt-1">퀴즈 설정</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            문제와 채점은 AI가 생성합니다. 중요한 사실 확인은 원문 학습 자료와 함께 보세요.
+          </p>
         </div>
 
         <Card>
@@ -218,6 +235,9 @@ export default function QuizPage() {
         >
           {generating ? "문제 생성 중..." : "퀴즈 시작"}
         </Button>
+        {generateError && (
+          <p className="text-sm text-destructive">{generateError}</p>
+        )}
       </div>
     );
   }
@@ -265,12 +285,17 @@ export default function QuizPage() {
             />
 
             {!currentResult ? (
-              <Button
-                onClick={submitAnswer}
-                disabled={evaluating || !answer.trim()}
-              >
-                {evaluating ? "채점 중..." : "제출"}
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  onClick={submitAnswer}
+                  disabled={evaluating || !answer.trim()}
+                >
+                  {evaluating ? "채점 중..." : "제출"}
+                </Button>
+                {evaluationError && (
+                  <p className="text-sm text-destructive">{evaluationError}</p>
+                )}
+              </div>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">

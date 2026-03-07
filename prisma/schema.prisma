@@ -69,6 +69,24 @@ model Concept {
   chapter        Chapter         @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   studyProgress  StudyProgress[]
   quizAttempts   QuizAttempt[]
+  learnJob       LearnJob?
+}
+
+model LearnJob {
+  id        String   @id @default(cuid())
+  conceptId String   @unique
+  status    String   @default("pending") // pending | running | completed | failed
+  priority  Int      @default(100)
+  attempts  Int      @default(0)
+  error     String?
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, createdAt])
 }
 
 model StudySession {

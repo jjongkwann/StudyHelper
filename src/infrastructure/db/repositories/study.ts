@@ -9,6 +9,13 @@ export const studyRepo = {
     });
   },
 
+  async getConceptCache(conceptId: string) {
+    return prisma.concept.findUnique({
+      where: { id: conceptId },
+      select: { learnCache: true },
+    });
+  },
+
   async cacheLearnContent(conceptId: string, json: string) {
     return prisma.concept.update({
       where: { id: conceptId },
@@ -19,6 +26,18 @@ export const studyRepo = {
   async getConceptsByChapters(chapterIds: string[]) {
     return prisma.concept.findMany({
       where: { chapterId: { in: chapterIds } },
+      orderBy: { order: "asc" },
+    });
+  },
+
+  async getConceptsByChapter(chapterId: string) {
+    return prisma.concept.findMany({
+      where: { chapterId },
+      select: {
+        id: true,
+        order: true,
+        learnCache: true,
+      },
       orderBy: { order: "asc" },
     });
   },

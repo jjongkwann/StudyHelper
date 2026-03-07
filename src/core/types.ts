@@ -14,6 +14,7 @@ export type ImportStepName =
   | "finalize";
 
 export type ImportJobStatus = "pending" | "running" | "completed" | "failed";
+export type LearnJobStatus = "pending" | "running" | "completed" | "failed";
 
 export interface ChapterPlan {
   title: string;

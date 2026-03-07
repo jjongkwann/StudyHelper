@@ -17,7 +17,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No concepts found" }, { status: 404 });
     }
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "퀴즈 생성 중 AI 응답을 검증하지 못했습니다.";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
