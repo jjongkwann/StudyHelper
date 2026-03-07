@@ -1,5 +1,26 @@
 import { z } from "zod";
 
+// -- planChapters chain schemas --
+
+export const extractTopicsSchema = z.object({
+  topics: z.array(
+    z.object({
+      title: z.string(),
+      keywords: z.array(z.string()),
+      order: z.number(),
+    })
+  ),
+});
+
+export const classifyFilesSchema = z.object({
+  assignments: z.array(
+    z.object({
+      file: z.string(),
+      topic: z.string(),
+    })
+  ),
+});
+
 export const chapterOrganizationSchema = z.object({
   chapters: z.array(
     z.object({

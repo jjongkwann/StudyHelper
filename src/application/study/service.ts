@@ -1,4 +1,4 @@
-import { llmGateway } from "@/infrastructure/llm/gateway";
+import { llmGateway, safeParseJSON } from "@/infrastructure/llm/gateway";
 import {
   learnConceptPrompt,
   generateQuizPrompt,
@@ -12,6 +12,13 @@ export const studyService = {
     const concept = await studyRepo.getConceptWithChapter(conceptId);
     if (!concept) return null;
 
+    // Return DB-cached content if available
+    if (concept.learnCache) {
+      try {
+        return JSON.parse(concept.learnCache);
+      } catch { /* regenerate if corrupted */ }
+    }
+
     const response = await llmGateway.generate(
       learnConceptPrompt(
         `${concept.title}\n${concept.content}`,
@@ -20,11 +27,16 @@ export const studyService = {
       { system: SYSTEM_PROMPT }
     );
 
+    let result;
     try {
-      return JSON.parse(response);
+      result = safeParseJSON(response);
     } catch {
-      return { explanation: response, keyPoints: [], checkQuestion: null };
+      result = { explanation: response, keyPoints: [], checkQuestion: null };
     }
+
+    // Persist to DB
+    await studyRepo.cacheLearnContent(conceptId, JSON.stringify(result));
+    return result;
   },
 
   async generateQuiz(chapterIds: string[], bloomLevel: number, count: number) {
@@ -40,7 +52,7 @@ export const studyService = {
       { system: SYSTEM_PROMPT }
     );
 
-    const parsed = JSON.parse(response);
+    const parsed = safeParseJSON(response) as { questions: { conceptTitle: string; question: string; bloomLevel: number; hints?: string[] }[] };
     const questions = parsed.questions.map(
       (q: { conceptTitle: string; question: string; bloomLevel: number; hints?: string[] }) => {
         const matched = concepts.find((c) => c.title === q.conceptTitle);
@@ -67,7 +79,7 @@ export const studyService = {
 
     let evaluation;
     try {
-      evaluation = JSON.parse(response);
+      evaluation = safeParseJSON(response) as { score: number; feedback: string; correctAnswer: string; weakPoints: string[] };
     } catch {
       evaluation = { score: 0, feedback: response, correctAnswer: "", weakPoints: [] };
     }

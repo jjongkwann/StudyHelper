@@ -6,20 +6,13 @@ import { chapterRepo } from "@/infrastructure/db/repositories/chapter";
 import {
   validateInput,
   scanFiles,
-  planChapters,
+  extractTopics,
+  classifyFiles,
+  buildChapters,
+  validatePlan,
   analyzeChapter,
   persistChapter,
 } from "./steps";
-
-/** Ordered pipeline of steps. analyzeChapter and persistChapter repeat per chapter. */
-const STEP_ORDER: ImportStepName[] = [
-  "validateInput",
-  "scanFiles",
-  "planChapters",
-  "analyzeChapter",
-  "persistChapter",
-  "finalize",
-];
 
 async function runStep(
   step: ImportStepName,
@@ -30,21 +23,26 @@ async function runStep(
       return validateInput(state);
     case "scanFiles":
       return scanFiles(state);
-    case "planChapters":
-      return planChapters(state);
+    case "extractTopics":
+      return extractTopics(state);
+    case "classifyFiles":
+      return classifyFiles(state);
+    case "buildChapters":
+      return buildChapters(state);
+    case "validatePlan":
+      return validatePlan(state);
     case "analyzeChapter":
       return analyzeChapter(state);
     case "persistChapter":
       return persistChapter(state);
     case "finalize":
-      return state; // finalize is handled by the engine
+      return state;
   }
 }
 
 /** Run the full import workflow for a project */
 export async function runImportWorkflow(
   projectId: string,
-  /** Resume from a saved state (for retry) */
   resumeState?: ImportState
 ) {
   const project = await projectRepo.findById(projectId);
@@ -64,42 +62,50 @@ export async function runImportWorkflow(
     });
 
     // -- validateInput --
-    state = await executeStep("validateInput", state, projectId, "파일 경로 확인 중...", 0.05);
+    state = await executeStep("validateInput", state, projectId, "파일 경로 확인 중...", 0.03);
 
     // -- scanFiles --
-    state = await executeStep("scanFiles", state, projectId, "파일 스캔 중...", 0.1);
+    state = await executeStep("scanFiles", state, projectId, "파일 스캔 중...", 0.06);
 
-    // -- planChapters --
+    // -- planChapters chain (4 steps) --
+    const fileCount = state.contentFiles.length;
+
     state = await executeStep(
-      "planChapters",
-      state,
-      projectId,
-      `${state.contentFiles.length}개 파일 발견. 챕터 구성 중...`,
-      0.2
+      "extractTopics", state, projectId,
+      `${fileCount}개 파일 발견. 주제 추출 중...`, 0.10
+    );
+
+    state = await executeStep(
+      "classifyFiles", state, projectId,
+      `${state.topics.length}개 주제에 파일 분류 중...`, 0.15
+    );
+
+    state = await executeStep(
+      "buildChapters", state, projectId,
+      "챕터 구성 중...", 0.20
+    );
+
+    state = await executeStep(
+      "validatePlan", state, projectId,
+      "챕터 계획 검증 중...", 0.25
     );
 
     // -- Per-chapter: analyze + persist --
     for (let i = 0; i < state.chapters.length; i++) {
       state = { ...state, currentChapterIndex: i };
       const chapter = state.chapters[i];
-      const progress = 0.25 + 0.7 * (i / state.chapters.length);
+      const progress = 0.28 + 0.67 * (i / state.chapters.length);
 
-      // analyzeChapter
       state = await executeStep(
-        "analyzeChapter",
-        state,
-        projectId,
+        "analyzeChapter", state, projectId,
         `개념 분석 중... (${i + 1}/${state.chapters.length}) ${chapter.title}`,
         progress
       );
 
-      // persistChapter
       state = await executeStep(
-        "persistChapter",
-        state,
-        projectId,
+        "persistChapter", state, projectId,
         `저장 중... (${i + 1}/${state.chapters.length}) ${chapter.title}`,
-        progress + 0.35 / state.chapters.length
+        progress + 0.335 / state.chapters.length
       );
     }
 

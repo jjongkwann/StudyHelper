@@ -1,29 +1,145 @@
 export const SYSTEM_PROMPT = `당신은 학습 도우미 AI입니다. 한국어로 답변합니다.
 학습 과학(인지심리학) 원리를 적용하여 효과적인 학습을 돕습니다.
-답변은 항상 JSON 형식으로 반환합니다.`;
+답변은 항상 JSON 형식으로 반환합니다. 설명 없이 JSON만 출력합니다.`;
 
+// ---------------------------------------------------------------------------
+// planChapters: 3-step prompt chain
+// ---------------------------------------------------------------------------
+
+/** Chain Step 1: Extract topic categories from syllabus headings */
+export function extractTopicsPrompt(syllabusHeadings: string): string {
+  return `<task>
+목차의 헤딩 구조에서 학습 주제(대분류)를 추출하라.
+</task>
+
+<input>
+<syllabus_headings>
+${syllabusHeadings}
+</syllabus_headings>
+</input>
+
+<rules>
+1. h2(##) 수준의 대분류만 추출한다.
+2. 각 주제에 연관된 키워드를 목차에서 찾아 나열한다.
+3. 학습 순서(기초→심화)로 정렬한다.
+</rules>
+
+<output_format>
+{
+  "topics": [
+    { "title": "주제명", "keywords": ["키워드1", "키워드2"], "order": 1 }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
+}
+
+/** Chain Step 2: Classify files into topics */
+export function classifyFilesPrompt(
+  topicsJson: string,
+  fileNames: string[]
+): string {
+  return `<task>
+파일명을 분석하여 각 파일이 어느 주제에 속하는지 분류하라.
+</task>
+
+<input>
+<topics>
+${topicsJson}
+</topics>
+
+<files>
+${fileNames.map((f) => `- ${f}`).join("\n")}
+</files>
+</input>
+
+<rules>
+1. 모든 파일은 정확히 1개 주제에 배정한다.
+2. 파일명은 입력과 정확히 일치해야 한다. 변경하지 마라.
+3. 어떤 주제에도 맞지 않으면 가장 가까운 주제에 배치한다.
+</rules>
+
+<output_format>
+{
+  "assignments": [
+    { "file": "정확한파일명.md", "topic": "주제명" }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
+}
+
+/** Chain Step 3: Build final chapters from topics + file assignments */
+export function buildChaptersPrompt(
+  topicsJson: string,
+  assignmentsJson: string
+): string {
+  return `<task>
+주제 목록과 파일 분류 결과를 합쳐 최종 학습 챕터를 구성하라.
+</task>
+
+<input>
+<topics>
+${topicsJson}
+</topics>
+
+<file_assignments>
+${assignmentsJson}
+</file_assignments>
+</input>
+
+<rules>
+1. 모든 파일은 정확히 1개 챕터에 속한다.
+2. 파일명은 입력과 정확히 일치해야 한다.
+3. 학습 순서는 기초→심화다.
+4. 설명(description)은 한 줄로 작성한다.
+</rules>
+
+<output_format>
+{
+  "chapters": [
+    {
+      "title": "챕터 제목",
+      "description": "이 챕터에서 다루는 내용 한 줄 요약",
+      "order": 1,
+      "files": ["exact-file-name.md"]
+    }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
+}
+
+// Legacy single-shot prompt (kept as fallback reference)
 export function organizeChaptersPrompt(
   syllabusContent: string,
   fileNames: string[]
 ): string {
-  return `당신은 학습 커리큘럼 설계 전문가입니다.
-아래의 목차(syllabus)와 사용 가능한 파일 목록을 분석하여, 효과적인 학습 순서로 챕터를 구성해주세요.
+  return `<task>
+목차와 파일 목록을 분석하여 학습 챕터를 구성하라.
+</task>
 
-**목차:**
----
+<input>
+<syllabus>
 ${syllabusContent}
----
+</syllabus>
 
-**사용 가능한 파일 목록:**
+<files>
 ${fileNames.map((f) => `- ${f}`).join("\n")}
+</files>
+</input>
 
-**규칙:**
-1. 목차의 대분류(운영체제, 데이터베이스, 네트워크 등)를 기반으로 챕터를 나누세요.
-2. 각 챕터에 해당하는 파일들을 매핑하세요. 파일명은 정확히 일치해야 합니다.
-3. 학습 효과를 고려한 순서(기초→심화)로 챕터와 파일을 정렬하세요.
-4. 챕터에 속하지 않는 파일이 있으면 가장 적절한 챕터에 배치하세요.
+<rules>
+1. 목차의 대분류를 기반으로 챕터를 나눈다.
+2. 각 챕터에 해당하는 파일들을 매핑한다. 파일명은 정확히 일치해야 한다.
+3. 학습 효과를 고려한 순서(기초→심화)로 정렬한다.
+4. 챕터에 속하지 않는 파일이 있으면 가장 적절한 챕터에 배치한다.
+</rules>
 
-다음 JSON 형식으로만 응답해주세요:
+<output_format>
 {
   "chapters": [
     {
@@ -33,7 +149,10 @@ ${fileNames.map((f) => `- ${f}`).join("\n")}
       "files": ["파일명1.md", "파일명2.md"]
     }
   ]
-}`;
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
 }
 
 export function analyzeConceptsPrompt(

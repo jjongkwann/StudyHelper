@@ -5,7 +5,10 @@ export type ProjectStatus = "pending" | "processing" | "ready" | "failed";
 export type ImportStepName =
   | "validateInput"
   | "scanFiles"
-  | "planChapters"
+  | "extractTopics"
+  | "classifyFiles"
+  | "buildChapters"
+  | "validatePlan"
   | "analyzeChapter"
   | "persistChapter"
   | "finalize";
@@ -28,6 +31,17 @@ export interface ConceptPlan {
 
 // -- Workflow state passed between steps --
 
+export interface TopicPlan {
+  title: string;
+  keywords: string[];
+  order: number;
+}
+
+export interface FileAssignment {
+  file: string;
+  topic: string;
+}
+
 export interface ImportState {
   projectId: string;
   contentPath: string;
@@ -38,6 +52,10 @@ export interface ImportState {
   syllabusFile: string | null;
   /** Content files (non-underscore) */
   contentFiles: string[];
+  /** Chain step 1 output: extracted topics */
+  topics: TopicPlan[];
+  /** Chain step 2 output: file→topic assignments */
+  fileAssignments: FileAssignment[];
   /** AI-planned chapters */
   chapters: ChapterPlan[];
   /** Per-chapter analyzed concepts, keyed by chapter order */
@@ -56,6 +74,8 @@ export function emptyImportState(projectId: string, contentPath: string, basePat
     mdFiles: [],
     syllabusFile: null,
     contentFiles: [],
+    topics: [],
+    fileAssignments: [],
     chapters: [],
     chapterConcepts: {},
     persistedChapters: [],

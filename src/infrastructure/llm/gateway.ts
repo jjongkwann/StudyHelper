@@ -4,7 +4,7 @@ import { AnthropicProvider } from "./providers/anthropic";
 import { CLIProvider } from "./providers/cli";
 
 /** Strip code fences and parse JSON */
-function safeParseJSON(text: string): unknown {
+export function safeParseJSON(text: string): unknown {
   const cleaned = text
     .replace(/```json\s*\n?/g, "")
     .replace(/```\s*$/g, "")

@@ -58,12 +58,13 @@ model Chapter {
 }
 
 model Concept {
-  id         String @id @default(cuid())
-  chapterId  String
-  title      String
-  content    String
-  bloomLevel Int    @default(1)
-  order      Int
+  id           String  @id @default(cuid())
+  chapterId    String
+  title        String
+  content      String
+  bloomLevel   Int     @default(1)
+  order        Int
+  learnCache   String? // JSON: cached LLM learn content
 
   chapter        Chapter         @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   studyProgress  StudyProgress[]

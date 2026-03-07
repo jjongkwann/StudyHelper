@@ -2,11 +2,22 @@ import { basename, join, isAbsolute } from "path";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 
-import type { ImportState, ChapterPlan, ConceptPlan } from "@/core/types";
+import type { ImportState, ChapterPlan, ConceptPlan, TopicPlan, FileAssignment } from "@/core/types";
 import { scanMarkdownFiles, parseMarkdownFile } from "@/infrastructure/parser/markdown";
 import { llmGateway } from "@/infrastructure/llm/gateway";
-import { organizeChaptersPrompt, analyzeConceptsPrompt, SYSTEM_PROMPT } from "@/infrastructure/llm/prompts";
-import { chapterOrganizationSchema, conceptAnalysisSchema } from "@/infrastructure/llm/schemas";
+import {
+  extractTopicsPrompt,
+  classifyFilesPrompt,
+  buildChaptersPrompt,
+  analyzeConceptsPrompt,
+  SYSTEM_PROMPT,
+} from "@/infrastructure/llm/prompts";
+import {
+  extractTopicsSchema,
+  classifyFilesSchema,
+  chapterOrganizationSchema,
+  conceptAnalysisSchema,
+} from "@/infrastructure/llm/schemas";
 import { chapterRepo } from "@/infrastructure/db/repositories/chapter";
 
 // -- Step: validateInput --
@@ -40,37 +51,148 @@ export async function scanFiles(state: ImportState): Promise<ImportState> {
   return { ...state, mdFiles, syllabusFile, contentFiles };
 }
 
-// -- Step: planChapters --
+// ---------------------------------------------------------------------------
+// planChapters chain: 4 steps (extractTopics → classifyFiles → buildChapters → validatePlan)
+// ---------------------------------------------------------------------------
 
-export async function planChapters(state: ImportState): Promise<ImportState> {
+/** Extract headings from syllabus markdown (code-only, no LLM) */
+function extractHeadings(markdown: string): string {
+  return markdown
+    .split("\n")
+    .filter((line) => /^#{1,3}\s/.test(line))
+    .join("\n");
+}
+
+// -- Chain Step 1: extractTopics --
+
+export async function extractTopics(state: ImportState): Promise<ImportState> {
   const fileNames = state.contentFiles.map((f) => basename(f));
 
-  let chapters: ChapterPlan[];
+  if (!state.syllabusFile) {
+    // No syllabus → create one topic per file as fallback
+    const topics: TopicPlan[] = [{
+      title: "학습 자료",
+      keywords: fileNames.map((f) => f.replace(/\.md$/, "")),
+      order: 1,
+    }];
+    return { ...state, topics };
+  }
+
   try {
-    const syllabusContent = state.syllabusFile
-      ? await readFile(state.syllabusFile, "utf-8")
-      : `사용 가능한 학습 파일: ${fileNames.map((f) => f.replace(/\.md$/, "")).join(", ")}`;
+    const syllabusRaw = await readFile(state.syllabusFile, "utf-8");
+    const headings = extractHeadings(syllabusRaw);
 
     const result = await llmGateway.generateAndValidate(
-      organizeChaptersPrompt(syllabusContent, fileNames),
+      extractTopicsPrompt(headings),
+      { system: SYSTEM_PROMPT, schema: extractTopicsSchema, retries: 1 }
+    );
+    return { ...state, topics: result.topics };
+  } catch (e) {
+    console.warn("extractTopics 실패, 단일 주제 폴백:", e);
+    return {
+      ...state,
+      topics: [{ title: "학습 자료", keywords: fileNames.map((f) => f.replace(/\.md$/, "")), order: 1 }],
+    };
+  }
+}
+
+// -- Chain Step 2: classifyFiles --
+
+export async function classifyFiles(state: ImportState): Promise<ImportState> {
+  const fileNames = state.contentFiles.map((f) => basename(f));
+
+  if (state.topics.length <= 1) {
+    // Single topic → all files belong to it
+    const assignments: FileAssignment[] = fileNames.map((f) => ({
+      file: f,
+      topic: state.topics[0]?.title ?? "학습 자료",
+    }));
+    return { ...state, fileAssignments: assignments };
+  }
+
+  try {
+    const topicsJson = JSON.stringify(state.topics, null, 2);
+    const result = await llmGateway.generateAndValidate(
+      classifyFilesPrompt(topicsJson, fileNames),
+      { system: SYSTEM_PROMPT, schema: classifyFilesSchema, retries: 1 }
+    );
+    return { ...state, fileAssignments: result.assignments };
+  } catch (e) {
+    console.warn("classifyFiles 실패, 첫 번째 주제에 전부 배정:", e);
+    const assignments: FileAssignment[] = fileNames.map((f) => ({
+      file: f,
+      topic: state.topics[0]?.title ?? "학습 자료",
+    }));
+    return { ...state, fileAssignments: assignments };
+  }
+}
+
+// -- Chain Step 3: buildChapters --
+
+export async function buildChapters(state: ImportState): Promise<ImportState> {
+  const fileNames = state.contentFiles.map((f) => basename(f));
+
+  try {
+    const topicsJson = JSON.stringify(state.topics, null, 2);
+    const assignmentsJson = JSON.stringify(state.fileAssignments, null, 2);
+
+    const result = await llmGateway.generateAndValidate(
+      buildChaptersPrompt(topicsJson, assignmentsJson),
       { system: SYSTEM_PROMPT, schema: chapterOrganizationSchema, retries: 1 }
     );
-    chapters = result.chapters.filter((c) => c.files.length > 0);
+
+    const chapters = result.chapters.filter((c) => c.files.length > 0);
+    if (chapters.length === 0) throw new Error("빈 챕터 결과");
+    return { ...state, chapters };
   } catch (e) {
-    console.warn("AI 챕터 구성 실패, 파일 기반 폴백:", e);
-    chapters = fileNames.map((f, i) => ({
+    console.warn("buildChapters 실패, 파일 기반 폴백:", e);
+    const chapters: ChapterPlan[] = fileNames.map((f, i) => ({
       title: f.replace(/\.md$/, ""),
       description: "",
       order: i + 1,
       files: [f],
     }));
+    return { ...state, chapters };
+  }
+}
+
+// -- Chain Step 4: validatePlan (code-only, no LLM) --
+
+export async function validatePlan(state: ImportState): Promise<ImportState> {
+  const fileNames = new Set(state.contentFiles.map((f) => basename(f)));
+  const assignedFiles = new Set<string>();
+
+  const fixedChapters = state.chapters.map((ch) => ({
+    ...ch,
+    // Remove files that don't actually exist
+    files: ch.files.filter((f) => {
+      if (!fileNames.has(f)) {
+        console.warn(`validatePlan: 존재하지 않는 파일 제거: ${f}`);
+        return false;
+      }
+      assignedFiles.add(f);
+      return true;
+    }),
+  })).filter((ch) => ch.files.length > 0);
+
+  // Find unassigned files and add them to the last chapter or create a new one
+  const unassigned = [...fileNames].filter((f) => !assignedFiles.has(f));
+  if (unassigned.length > 0) {
+    console.warn(`validatePlan: 미배정 파일 ${unassigned.length}개 → 기타 챕터에 추가`);
+    const maxOrder = Math.max(0, ...fixedChapters.map((c) => c.order));
+    fixedChapters.push({
+      title: "기타 학습 자료",
+      description: "자동 분류되지 않은 학습 파일",
+      order: maxOrder + 1,
+      files: unassigned,
+    });
   }
 
-  if (chapters.length === 0) {
-    throw new Error("챕터를 구성할 수 없습니다");
+  if (fixedChapters.length === 0) {
+    throw new Error("유효한 챕터가 없습니다");
   }
 
-  return { ...state, chapters };
+  return { ...state, chapters: fixedChapters };
 }
 
 // -- Step: analyzeChapter (runs per chapter) --

@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
+import {
+  DesktopSidebar,
+  MobileBottomNav,
+  MobileHeader,
+} from "@/components/app-shell-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,27 +32,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="flex min-h-screen">
-          <aside className="w-64 border-r bg-muted/30 p-6 flex flex-col gap-6">
-            <Link href="/" className="text-xl font-bold">
-              StudyHelper
-            </Link>
-            <nav className="flex flex-col gap-2">
-              <Link
-                href="/"
-                className="px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/projects"
-                className="px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm"
-              >
-                Projects
-              </Link>
-            </nav>
-          </aside>
-          <main className="flex-1 p-8">{children}</main>
+        <div className="min-h-screen bg-background">
+          <MobileHeader />
+          <div className="flex min-h-screen">
+            <DesktopSidebar />
+            <main className="flex-1 min-w-0 pb-24 md:pb-0">
+              <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 md:px-8 md:py-8">
+                <div className="max-w-4xl">{children}</div>
+              </div>
+            </main>
+          </div>
+          <MobileBottomNav />
         </div>
       </body>
     </html>

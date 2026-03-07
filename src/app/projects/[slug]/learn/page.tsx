@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -153,7 +155,7 @@ export default function LearnPage() {
 
   // 학습 화면
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{selectedChapter.title}</h1>
@@ -189,8 +191,10 @@ export default function LearnPage() {
             ) : learnContent ? (
               <>
                 {/* 설명 */}
-                <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap">
-                  {learnContent.explanation}
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {learnContent.explanation}
+                  </ReactMarkdown>
                 </div>
 
                 {/* 핵심 포인트 */}
@@ -209,7 +213,11 @@ export default function LearnPage() {
                 {learnContent.analogy && (
                   <div className="bg-muted/50 p-4 rounded-lg">
                     <h3 className="font-semibold mb-1 text-sm">비유로 이해하기</h3>
-                    <p className="text-sm">{learnContent.analogy}</p>
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {learnContent.analogy}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 )}
 
@@ -219,9 +227,11 @@ export default function LearnPage() {
                 {learnContent.checkQuestion && (
                   <div className="space-y-4">
                     <h3 className="font-semibold">이해도 확인</h3>
-                    <p className="text-sm">
-                      {learnContent.checkQuestion.question}
-                    </p>
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {learnContent.checkQuestion.question}
+                      </ReactMarkdown>
+                    </div>
                     <Textarea
                       placeholder="답변을 입력하세요..."
                       value={answer}

@@ -9,6 +9,13 @@ export const studyRepo = {
     });
   },
 
+  async cacheLearnContent(conceptId: string, json: string) {
+    return prisma.concept.update({
+      where: { id: conceptId },
+      data: { learnCache: json },
+    });
+  },
+
   async getConceptsByChapters(chapterIds: string[]) {
     return prisma.concept.findMany({
       where: { chapterId: { in: chapterIds } },
