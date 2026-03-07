@@ -32,6 +32,18 @@ export const chapterOrganizationSchema = z.object({
   ),
 });
 
+export const conceptOutlineSchema = z.object({
+  outline: z.array(
+    z.object({
+      fileIndex: z.number(),
+      sectionTitle: z.string(),
+      learningOrder: z.number(),
+      bloomLevel: z.number().min(1).max(6),
+      mergeWithPrevious: z.boolean().optional(),
+    })
+  ),
+});
+
 export const conceptAnalysisSchema = z.object({
   concepts: z.array(
     z.object({

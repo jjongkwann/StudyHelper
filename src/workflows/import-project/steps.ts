@@ -10,6 +10,9 @@ import {
   classifyFilesPrompt,
   buildChaptersPrompt,
   analyzeConceptsPrompt,
+  buildFileBlocks,
+  structureConceptsPrompt,
+  generateConceptsPrompt,
   SYSTEM_PROMPT,
 } from "@/infrastructure/llm/prompts";
 import {
@@ -17,6 +20,7 @@ import {
   classifyFilesSchema,
   chapterOrganizationSchema,
   conceptAnalysisSchema,
+  conceptOutlineSchema,
 } from "@/infrastructure/llm/schemas";
 import { chapterRepo } from "@/infrastructure/db/repositories/chapter";
 
@@ -216,31 +220,144 @@ export async function analyzeChapter(state: ImportState): Promise<ImportState> {
     chapterFiles.map((f) => parseMarkdownFile(f, state.basePath))
   );
 
-  const combinedContent = parsedFiles.map((p) => p.rawContent).join("\n\n---\n\n");
-
   let concepts: ConceptPlan[];
-  try {
-    const result = await llmGateway.generateAndValidate(
-      analyzeConceptsPrompt(chapter.title, combinedContent),
-      { system: SYSTEM_PROMPT, schema: conceptAnalysisSchema, retries: 1 }
-    );
-    concepts = result.concepts;
-  } catch (e) {
-    console.warn(`AI 개념 분석 실패 (${chapter.title}), 헤딩 기반 폴백:`, e);
-    concepts = parsedFiles.flatMap((p, fi) =>
-      p.sections.map((s, si) => ({
-        title: s.title,
-        content: s.content,
-        bloomLevel: 1,
-        order: fi * 100 + si + 1,
-      }))
-    );
+
+  // Single file → use existing single-shot prompt (no need for 2-step chain)
+  if (parsedFiles.length === 1) {
+    concepts = await analyzeChapterSingleFile(chapter, parsedFiles);
+  } else {
+    concepts = await analyzeChapterMultiFile(chapter, parsedFiles);
   }
 
   return {
     ...state,
     chapterConcepts: { ...state.chapterConcepts, [chapter.order]: concepts },
   };
+}
+
+/** Single-file chapter: use existing analyzeConceptsPrompt (1 LLM call) */
+async function analyzeChapterSingleFile(
+  chapter: ChapterPlan,
+  parsedFiles: Awaited<ReturnType<typeof parseMarkdownFile>>[]
+): Promise<ConceptPlan[]> {
+  try {
+    const result = await llmGateway.generateAndValidate(
+      analyzeConceptsPrompt(chapter.title, parsedFiles[0].rawContent),
+      { system: SYSTEM_PROMPT, schema: conceptAnalysisSchema, retries: 1 }
+    );
+    return result.concepts;
+  } catch (e) {
+    console.warn(`AI 개념 분석 실패 (${chapter.title}), 헤딩 기반 폴백:`, e);
+    return headingFallback(parsedFiles);
+  }
+}
+
+/** Multi-file chapter: 2-step prompt chain with fallback cascade */
+async function analyzeChapterMultiFile(
+  chapter: ChapterPlan,
+  parsedFiles: Awaited<ReturnType<typeof parseMarkdownFile>>[]
+): Promise<ConceptPlan[]> {
+  const files = parsedFiles.map((p, i) => ({
+    name: chapter.files[i] ?? `file${i}.md`,
+    content: p.rawContent,
+  }));
+  const fileBlocks = buildFileBlocks(files);
+
+  // Step 1: Structure analysis
+  let outline: { fileIndex: number; sectionTitle: string; learningOrder: number; bloomLevel: number; mergeWithPrevious?: boolean }[] | null = null;
+  try {
+    const step1 = await llmGateway.generateAndValidate(
+      structureConceptsPrompt(chapter.title, fileBlocks),
+      { system: SYSTEM_PROMPT, schema: conceptOutlineSchema, retries: 1 }
+    );
+    outline = step1.outline;
+  } catch (e) {
+    console.warn(`Step 1 구조 분석 실패 (${chapter.title}), 단일 프롬프트 폴백:`, e);
+  }
+
+  // Step 1 failed → fallback to single-shot with XML file blocks
+  if (!outline) {
+    try {
+      const result = await llmGateway.generateAndValidate(
+        analyzeConceptsPrompt(chapter.title, fileBlocks),
+        { system: SYSTEM_PROMPT, schema: conceptAnalysisSchema, retries: 1 }
+      );
+      return result.concepts;
+    } catch (e) {
+      console.warn(`단일 프롬프트 폴백도 실패 (${chapter.title}), 헤딩 기반 폴백:`, e);
+      return headingFallback(parsedFiles);
+    }
+  }
+
+  // Step 2: Generate concepts from outline
+  try {
+    const outlineJson = JSON.stringify(outline, null, 2);
+    const step2 = await llmGateway.generateAndValidate(
+      generateConceptsPrompt(chapter.title, fileBlocks, outlineJson),
+      { system: SYSTEM_PROMPT, schema: conceptAnalysisSchema, retries: 1 }
+    );
+    return step2.concepts;
+  } catch (e) {
+    console.warn(`Step 2 개념 생성 실패 (${chapter.title}), outline 기반 코드 생성:`, e);
+    // Step 2 failed → build concepts from outline + parsed sections
+    return outlineFallback(outline, parsedFiles);
+  }
+}
+
+/** Fallback: generate concepts from heading structure */
+function headingFallback(
+  parsedFiles: Awaited<ReturnType<typeof parseMarkdownFile>>[]
+): ConceptPlan[] {
+  return parsedFiles.flatMap((p, fi) =>
+    p.sections.map((s, si) => ({
+      title: s.title,
+      content: s.content,
+      bloomLevel: 1,
+      order: fi * 100 + si + 1,
+    }))
+  );
+}
+
+/** Fallback: generate concepts from outline + parsed sections when Step 2 fails */
+function outlineFallback(
+  outline: { fileIndex: number; sectionTitle: string; learningOrder: number; bloomLevel: number; mergeWithPrevious?: boolean }[],
+  parsedFiles: Awaited<ReturnType<typeof parseMarkdownFile>>[]
+): ConceptPlan[] {
+  const sorted = [...outline].sort((a, b) => a.learningOrder - b.learningOrder);
+  const concepts: ConceptPlan[] = [];
+
+  for (const entry of sorted) {
+    if (entry.mergeWithPrevious && concepts.length > 0) {
+      const prev = concepts[concepts.length - 1];
+      const section = findSection(parsedFiles, entry.fileIndex, entry.sectionTitle);
+      if (section) {
+        prev.content += "\n\n" + section.content;
+      }
+      continue;
+    }
+
+    const section = findSection(parsedFiles, entry.fileIndex, entry.sectionTitle);
+    concepts.push({
+      title: entry.sectionTitle,
+      content: section?.content ?? "",
+      bloomLevel: entry.bloomLevel,
+      order: entry.learningOrder,
+    });
+  }
+
+  return concepts;
+}
+
+/** Find a section in parsed files by file index and title */
+function findSection(
+  parsedFiles: Awaited<ReturnType<typeof parseMarkdownFile>>[],
+  fileIndex: number,
+  sectionTitle: string
+): { title: string; content: string } | undefined {
+  const file = parsedFiles[fileIndex];
+  if (!file) return undefined;
+  return file.sections.find((s) => s.title === sectionTitle)
+    ?? file.sections.find((s) => s.title.includes(sectionTitle) || sectionTitle.includes(s.title));
 }
 
 // -- Step: persistChapter (runs per chapter, idempotent via persistedChapters) --

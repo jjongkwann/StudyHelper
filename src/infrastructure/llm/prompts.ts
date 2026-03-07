@@ -156,6 +156,106 @@ ${fileNames.map((f) => `- ${f}`).join("\n")}
 <important>설명 없이 JSON만 출력하라.</important>`;
 }
 
+// ---------------------------------------------------------------------------
+// analyzeChapter: 2-step prompt chain (multi-file chapters)
+// ---------------------------------------------------------------------------
+
+/** Build XML file blocks from parsed file contents */
+export function buildFileBlocks(
+  files: { name: string; content: string }[]
+): string {
+  return files
+    .map(
+      (f, i) =>
+        `<file index="${i}" name="${f.name}">\n${f.content}\n</file>`
+    )
+    .join("\n\n");
+}
+
+/** Chain Step 1: Analyze structure and determine learning order */
+export function structureConceptsPrompt(
+  chapterTitle: string,
+  fileBlocks: string
+): string {
+  return `<task>
+챕터 "${chapterTitle}"에 속한 파일들의 섹션 구조를 분석하고 학습 순서를 결정하라.
+</task>
+
+<input>
+${fileBlocks}
+</input>
+
+<rules>
+1. 각 파일의 h2(##), h3(###) 섹션을 식별한다.
+2. 같은 제목이 여러 파일에 있으면 파일 맥락(파일명, 주변 내용)으로 구분한다.
+3. 순서 원칙: 개요/정의 → 핵심 개념 → 세부/심화 → 응용/사례
+4. 원문 등장 순서를 기본으로 하되, 명백한 선수지식 관계만 재배치한다.
+5. 짧은 섹션(1-2줄)은 mergeWithPrevious: true로 표시하여 인접 섹션과 병합한다.
+6. bloomLevel: 해당 섹션의 인지 수준 (1=기억, 2=이해, 3=적용, 4=분석, 5=평가, 6=창조)
+</rules>
+
+<output_format>
+{
+  "outline": [
+    {
+      "fileIndex": 0,
+      "sectionTitle": "섹션 제목",
+      "learningOrder": 1,
+      "bloomLevel": 2,
+      "mergeWithPrevious": false
+    }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
+}
+
+/** Chain Step 2: Generate concepts based on outline */
+export function generateConceptsPrompt(
+  chapterTitle: string,
+  fileBlocks: string,
+  outlineJson: string
+): string {
+  return `<task>
+아래 outline의 learningOrder 순서대로 각 섹션에서 학습 개념(concept)을 추출하라.
+</task>
+
+<input>
+<chapter_title>${chapterTitle}</chapter_title>
+
+<outline>
+${outlineJson}
+</outline>
+
+${fileBlocks}
+</input>
+
+<rules>
+1. outline의 learningOrder 순서대로 개념을 생성하고, order = learningOrder로 설정한다.
+2. mergeWithPrevious: true인 섹션은 직전 섹션과 합쳐 하나의 개념으로 만든다.
+3. 각 개념의 content는 해당 섹션 원문 기반 핵심 요약 (마크다운)이다.
+4. bloomLevel은 outline 값을 참고하되, 내용에 맞게 조정할 수 있다.
+5. 하나의 개념이 1~3분 학습 분량이 되도록 한다.
+6. 너무 잘게 쪼개지 말고, h2/h3 수준의 독립적인 학습 단위로 나눈다.
+</rules>
+
+<output_format>
+{
+  "concepts": [
+    {
+      "title": "개념 제목",
+      "content": "해당 개념의 핵심 내용 요약 (마크다운, 원본 내용 기반)",
+      "bloomLevel": 2,
+      "order": 1
+    }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
+}
+
 export function analyzeConceptsPrompt(
   chapterTitle: string,
   fileContent: string
