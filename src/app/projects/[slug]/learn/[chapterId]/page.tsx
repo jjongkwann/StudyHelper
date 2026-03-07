@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { ChevronDown, ChevronUp, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { SelectionToolbar } from "@/components/selection-toolbar";
+import { AnnotationPanel } from "@/components/annotation-panel";
 
 interface Concept {
   id: string;
@@ -56,6 +61,8 @@ export default function ChapterLearnPage() {
   } | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [annotationRefreshKey, setAnnotationRefreshKey] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoadingChapter(true);
@@ -128,6 +135,30 @@ export default function ChapterLearnPage() {
     });
   }, [chapter, currentConceptIndex]);
 
+  // Apply visual highlights to rendered content
+  useEffect(() => {
+    const container = contentRef.current;
+    const concept = chapter?.concepts[currentConceptIndex];
+    if (!container || !concept || !learnContent) return;
+
+    const controller = new AbortController();
+
+    fetch(`/api/annotations?conceptId=${concept.id}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((annotations: { selectedText: string; color: string }[]) => {
+        clearHighlights(container);
+        for (const a of annotations) {
+          applyHighlight(container, a.selectedText, a.color);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      controller.abort();
+      clearHighlights(container);
+    };
+  }, [chapter, currentConceptIndex, learnContent, annotationRefreshKey]);
+
   const handleCheckAnswer = async () => {
     if (!learnContent?.checkQuestion || !answer.trim() || !chapter) return;
     const concept = chapter.concepts[currentConceptIndex];
@@ -188,6 +219,28 @@ export default function ChapterLearnPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <Link href="/projects" className="transition-colors hover:text-foreground">
+          프로젝트
+        </Link>
+        <span>/</span>
+        <Link
+          href={`/projects/${slug}`}
+          className="transition-colors hover:text-foreground"
+        >
+          프로젝트 상세
+        </Link>
+        <span>/</span>
+        <Link
+          href={`/projects/${slug}/learn`}
+          className="transition-colors hover:text-foreground"
+        >
+          학습 모드
+        </Link>
+        <span>/</span>
+        <span className="text-foreground">{chapter.title}</span>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm text-muted-foreground">Chapter {chapter.order}</div>
@@ -278,6 +331,12 @@ export default function ChapterLearnPage() {
             <CardTitle>{currentConcept.title}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div ref={contentRef} className="relative">
+              <SelectionToolbar
+                containerRef={contentRef}
+                conceptId={currentConcept.id}
+                onSaved={() => setAnnotationRefreshKey((k) => k + 1)}
+              />
             {loadingContent ? (
               <div className="py-8 text-center text-muted-foreground">
                 AI가 학습 콘텐츠를 준비하고 있습니다...
@@ -292,7 +351,7 @@ export default function ChapterLearnPage() {
             ) : learnContent ? (
               <>
                 <div className="prose prose-sm max-w-none dark:prose-invert">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                     {learnContent.explanation}
                   </ReactMarkdown>
                 </div>
@@ -302,7 +361,15 @@ export default function ChapterLearnPage() {
                     <h3 className="mb-2 font-semibold">핵심 포인트</h3>
                     <ul className="list-disc list-inside space-y-1 text-sm">
                       {learnContent.keyPoints.map((point, index) => (
-                        <li key={index}>{point}</li>
+                        <li key={index}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{ p: ({ children }) => <span>{children}</span> }}
+                          >
+                            {point}
+                          </ReactMarkdown>
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -312,7 +379,7 @@ export default function ChapterLearnPage() {
                   <div className="rounded-lg bg-muted/50 p-4">
                     <h3 className="mb-1 text-sm font-semibold">비유로 이해하기</h3>
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                         {learnContent.analogy}
                       </ReactMarkdown>
                     </div>
@@ -325,7 +392,7 @@ export default function ChapterLearnPage() {
                   <div className="space-y-4">
                     <h3 className="font-semibold">이해도 확인</h3>
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                         {learnContent.checkQuestion.question}
                       </ReactMarkdown>
                     </div>
@@ -382,9 +449,73 @@ export default function ChapterLearnPage() {
                 </div>
               </>
             ) : null}
+            </div>
+
+            {currentConcept && learnContent && (
+              <>
+                <Separator />
+                <AnnotationPanel
+                  conceptId={currentConcept.id}
+                  refreshKey={annotationRefreshKey}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       )}
     </div>
   );
+}
+
+const highlightColors: Record<string, string> = {
+  yellow: "#fef08a",
+  blue: "#bfdbfe",
+  green: "#bbf7d0",
+  pink: "#fbcfe8",
+};
+
+function clearHighlights(container: HTMLElement) {
+  container.querySelectorAll("mark[data-annotation-hl]").forEach((mark) => {
+    const parent = mark.parentNode;
+    if (parent) {
+      parent.replaceChild(
+        document.createTextNode(mark.textContent || ""),
+        mark
+      );
+      parent.normalize();
+    }
+  });
+}
+
+function applyHighlight(
+  container: HTMLElement,
+  text: string,
+  color: string
+) {
+  const walker = document.createTreeWalker(
+    container,
+    NodeFilter.SHOW_TEXT
+  );
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    const idx = (node.textContent || "").indexOf(text);
+    if (idx === -1) continue;
+
+    const range = document.createRange();
+    range.setStart(node, idx);
+    range.setEnd(node, idx + text.length);
+
+    const mark = document.createElement("mark");
+    mark.setAttribute("data-annotation-hl", "");
+    mark.style.backgroundColor = highlightColors[color] || highlightColors.yellow;
+    mark.style.borderRadius = "2px";
+    mark.style.padding = "0 1px";
+
+    try {
+      range.surroundContents(mark);
+    } catch {
+      // surroundContents fails if range crosses element boundaries — skip
+    }
+    break;
+  }
 }

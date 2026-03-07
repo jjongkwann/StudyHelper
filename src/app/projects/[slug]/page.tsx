@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   RotateCcw,
   Sparkles,
+  StickyNote,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -151,6 +152,14 @@ export default function ProjectDetailPage() {
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-card to-muted/40">
         <div className="space-y-6 px-5 py-6 sm:px-6 sm:py-7">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <Link href="/projects" className="transition-colors hover:text-foreground">
+              프로젝트
+            </Link>
+            <span>/</span>
+            <span className="text-foreground">{project.name}</span>
+          </div>
+
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
               <Badge variant="outline" className="rounded-full px-3 py-1">
@@ -215,6 +224,12 @@ export default function ProjectDetailPage() {
             <Link href={`/projects/${slug}/quiz`} className="lg:min-w-32">
               <Button variant="outline" className="h-12 w-full rounded-2xl">
                 퀴즈
+              </Button>
+            </Link>
+            <Link href={`/projects/${slug}/annotations`} className="lg:min-w-32">
+              <Button variant="outline" className="h-12 w-full rounded-2xl">
+                <StickyNote className="size-4" />
+                메모함
               </Button>
             </Link>
           </div>
@@ -372,16 +387,22 @@ export default function ProjectDetailPage() {
 
       <div className="sticky bottom-20 z-20 md:hidden">
         <div className="rounded-3xl border border-border/60 bg-background/92 p-3 shadow-lg backdrop-blur">
-          <div className="flex gap-2">
-            <Link href={primaryAction.href} className="flex-1">
-              <Button variant={primaryAction.tone} className="h-11 w-full rounded-2xl">
+          <div className="grid grid-cols-3 gap-2">
+            <Link href={primaryAction.href}>
+              <Button variant={primaryAction.tone} className="h-11 w-full rounded-2xl text-xs">
                 {primaryAction.label}
               </Button>
             </Link>
-            <Link href={`/projects/${slug}/quiz`} className="flex-1">
-              <Button variant="outline" className="h-11 w-full rounded-2xl">
+            <Link href={`/projects/${slug}/quiz`}>
+              <Button variant="outline" className="h-11 w-full rounded-2xl text-xs">
                 <ClipboardCheck className="size-4" />
                 퀴즈
+              </Button>
+            </Link>
+            <Link href={`/projects/${slug}/annotations`}>
+              <Button variant="outline" className="h-11 w-full rounded-2xl text-xs">
+                <StickyNote className="size-4" />
+                메모함
               </Button>
             </Link>
           </div>

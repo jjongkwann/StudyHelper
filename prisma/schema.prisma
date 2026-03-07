@@ -66,10 +66,11 @@ model Concept {
   order        Int
   learnCache   String? // JSON: cached LLM learn content
 
-  chapter        Chapter         @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  chapter        Chapter              @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   studyProgress  StudyProgress[]
   quizAttempts   QuizAttempt[]
   learnJob       LearnJob?
+  annotations    ConceptAnnotation[]
 }
 
 model LearnJob {
@@ -131,4 +132,19 @@ model QuizAttempt {
 
   session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   concept Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+}
+
+model ConceptAnnotation {
+  id           String   @id @default(cuid())
+  conceptId    String
+  selectedText String
+  note         String?
+  color        String   @default("yellow")
+  anchor       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
 }
