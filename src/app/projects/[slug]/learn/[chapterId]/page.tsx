@@ -7,7 +7,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
+import "highlight.js/styles/github-dark.min.css";
 import { ChevronDown, ChevronUp, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -418,7 +420,7 @@ export default function ChapterLearnPage() {
             ) : learnContent ? (
               <>
                 <div ref={articleRef} className="prose prose-sm max-w-none dark:prose-invert">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeHighlight]}>
                     {learnContent.explanation}
                   </ReactMarkdown>
                 </div>
@@ -431,7 +433,7 @@ export default function ChapterLearnPage() {
                         <li key={index}>
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
+                            rehypePlugins={[rehypeKatex, rehypeHighlight]}
                             components={{ p: ({ children }) => <span>{children}</span> }}
                           >
                             {point}
@@ -446,7 +448,7 @@ export default function ChapterLearnPage() {
                   <div className="rounded-lg bg-muted/50 p-4">
                     <h3 className="mb-1 text-sm font-semibold">비유로 이해하기</h3>
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeHighlight]}>
                         {learnContent.analogy}
                       </ReactMarkdown>
                     </div>
@@ -459,7 +461,7 @@ export default function ChapterLearnPage() {
                   <div className="space-y-4">
                     <h3 className="font-semibold">이해도 확인</h3>
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeHighlight]}>
                         {learnContent.checkQuestion.question}
                       </ReactMarkdown>
                     </div>
