@@ -28,6 +28,11 @@ export interface ConceptPlan {
   content: string;
   bloomLevel: number;
   order: number;
+  kind?: "concept" | "support";
+  prerequisites?: string[];
+  estimatedMinutes?: number;
+  assessable?: boolean;
+  sourceSections?: string[];
 }
 
 // -- Workflow state passed between steps --

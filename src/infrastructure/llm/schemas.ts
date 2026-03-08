@@ -40,6 +40,7 @@ export const conceptOutlineSchema = z.object({
       learningOrder: z.number(),
       bloomLevel: z.number().min(1).max(6),
       mergeWithPrevious: z.boolean().optional(),
+      sectionRole: z.enum(["concept", "support"]).optional().default("concept"),
     })
   ),
 });
@@ -49,8 +50,13 @@ export const conceptAnalysisSchema = z.object({
     z.object({
       title: z.string(),
       content: z.string(),
-      bloomLevel: z.number().min(1).max(6).default(1),
+      bloomLevel: z.number().min(1).max(6).default(2),
       order: z.number(),
+      kind: z.enum(["concept", "support"]).optional().default("concept"),
+      prerequisites: z.array(z.string()).optional().default([]),
+      estimatedMinutes: z.number().int().min(1).max(15).optional(),
+      assessable: z.boolean().optional(),
+      sourceSections: z.array(z.string()).optional().default([]),
     })
   ),
 });

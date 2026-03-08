@@ -1,6 +1,7 @@
 export const SYSTEM_PROMPT = `당신은 학습 도우미 AI입니다. 한국어로 답변합니다.
 학습 과학(인지심리학) 원리를 적용하여 효과적인 학습을 돕습니다.
 제공된 원문 내용을 최우선 근거로 사용합니다. 원문에 없는 사실을 단정하지 않습니다.
+학습 concept는 문서 헤딩의 복사본이 아니라, 학습자가 독립적으로 복습할 수 있는 지식 단위여야 합니다.
 답변은 항상 JSON 형식으로 반환합니다. 설명 없이 JSON만 출력합니다.`;
 
 // ---------------------------------------------------------------------------
@@ -178,7 +179,7 @@ export function structureConceptsPrompt(
   fileBlocks: string
 ): string {
   return `<task>
-챕터 "${chapterTitle}"에 속한 파일들의 섹션 구조를 분석하고 학습 순서를 결정하라.
+챕터 "${chapterTitle}"에 속한 파일들의 섹션 구조를 분석하고, 독립적인 학습 concept와 보조 섹션을 구분하여 학습 순서를 결정하라.
 </task>
 
 <input>
@@ -188,10 +189,12 @@ ${fileBlocks}
 <rules>
 1. 각 파일의 h2(##), h3(###) 섹션을 식별한다.
 2. 같은 제목이 여러 파일에 있으면 파일 맥락(파일명, 주변 내용)으로 구분한다.
-3. 순서 원칙: 개요/정의 → 핵심 개념 → 세부/심화 → 응용/사례
-4. 원문 등장 순서를 기본으로 하되, 명백한 선수지식 관계만 재배치한다.
-5. 짧은 섹션(1-2줄)은 mergeWithPrevious: true로 표시하여 인접 섹션과 병합한다.
-6. bloomLevel: 해당 섹션의 인지 수준 (1=기억, 2=이해, 3=적용, 4=분석, 5=평가, 6=창조)
+3. concept는 학습자가 바로 복습할 수 있는 구체 주제명이어야 한다. 예: "다익스트라", "투 포인터", "유니온-파인드", "Trie".
+4. 다음과 같은 섹션은 보조 섹션(sectionRole="support")으로 분류한다: 개요, 요약, 핵심 아이디어, 체크리스트, 자주 하는 실수, 대표 문제, 예제, 비교, 다음 노트.
+5. 순서 원칙: 선수지식 → 핵심 개념 → 구현/비교 → 응용/실전.
+6. 원문 등장 순서를 기본으로 하되, 명백한 선수지식 관계가 있으면 재배치한다.
+7. 짧은 섹션(1-2줄) 또는 support 섹션은 mergeWithPrevious: true를 우선 고려한다.
+8. bloomLevel: 해당 섹션의 인지 수준 (1=기억, 2=이해, 3=적용, 4=분석, 5=평가, 6=창조)
 </rules>
 
 <output_format>
@@ -202,7 +205,8 @@ ${fileBlocks}
       "sectionTitle": "섹션 제목",
       "learningOrder": 1,
       "bloomLevel": 2,
-      "mergeWithPrevious": false
+      "mergeWithPrevious": false,
+      "sectionRole": "concept"
     }
   ]
 }
@@ -218,7 +222,7 @@ export function generateConceptsPrompt(
   outlineJson: string
 ): string {
   return `<task>
-아래 outline의 learningOrder 순서대로 각 섹션에서 학습 개념(concept)을 추출하라.
+아래 outline과 원문을 바탕으로 스터디 플래너에 바로 쓸 수 있는 학습 concept들을 재구성하라.
 </task>
 
 <input>
@@ -232,12 +236,15 @@ ${fileBlocks}
 </input>
 
 <rules>
-1. outline의 learningOrder 순서대로 개념을 생성하고, order = learningOrder로 설정한다.
-2. mergeWithPrevious: true인 섹션은 직전 섹션과 합쳐 하나의 개념으로 만든다.
-3. 각 개념의 content는 해당 섹션 원문 기반 핵심 요약 (마크다운)이다.
-4. bloomLevel은 outline 값을 참고하되, 내용에 맞게 조정할 수 있다.
-5. 하나의 개념이 1~3분 학습 분량이 되도록 한다.
-6. 너무 잘게 쪼개지 말고, h2/h3 수준의 독립적인 학습 단위로 나눈다.
+1. output에는 학습 concept만 포함한다. support 섹션은 별도 concept로 만들지 말고 가장 가까운 concept의 content에 흡수한다.
+2. outline의 learningOrder를 기본으로 하되, 여러 섹션을 합쳐 하나의 concept로 재구성해도 된다.
+3. title은 복습 카드 제목처럼 구체적이고 독립적이어야 한다. 금지 예시: "개요", "체크리스트", "핵심 아이디어", "대표 문제".
+4. 각 concept의 content는 원문 기반 핵심 요약이며, 필요하면 support 섹션 내용을 소제목 형태로 흡수한다.
+5. prerequisites에는 이 챕터 안에서 먼저 알아야 하는 concept 제목만 넣는다.
+6. estimatedMinutes는 2~6분 범위로 작성한다.
+7. 하나의 concept는 보통 2~6분 분량, 챕터 전체는 보통 5~15개 concept를 목표로 한다. 자연스럽게 더 적을 수는 있다.
+8. bloomLevel은 내용에 맞게 분산시킨다. 정의/용어 중심은 1-2, 구현/문제 해결은 3, 비교/선택 기준은 4 이상을 우선 고려한다.
+9. assessable은 원문만으로 이해 확인 질문을 만들 수 있으면 true다.
 </rules>
 
 <output_format>
@@ -247,7 +254,12 @@ ${fileBlocks}
       "title": "개념 제목",
       "content": "해당 개념의 핵심 내용 요약 (마크다운, 원본 내용 기반)",
       "bloomLevel": 2,
-      "order": 1
+      "order": 1,
+      "kind": "concept",
+      "prerequisites": ["선수 개념 제목"],
+      "estimatedMinutes": 4,
+      "assessable": true,
+      "sourceSections": ["원본 섹션 제목"]
     }
   ]
 }
@@ -260,21 +272,25 @@ export function analyzeConceptsPrompt(
   chapterTitle: string,
   fileContent: string
 ): string {
-  return `다음 마크다운 콘텐츠를 분석하여 학습 가능한 개념(concept)들로 분해해주세요.
-각 개념은 하나의 핵심 주제를 다루며, 블룸의 택소노미 레벨(1-6)을 지정해주세요.
+  return `다음 source content를 분석하여 스터디 플래너에 적합한 학습 concept들로 재구성해주세요.
+각 concept는 하나의 핵심 주제를 다루며, 문서 헤딩을 그대로 복사하지 말고 복습 가능한 주제명으로 작성해주세요.
 
 챕터: ${chapterTitle}
 
-마크다운 콘텐츠:
+source content:
 ---
 ${fileContent}
 ---
 
 **규칙:**
-- 개념은 h2/h3 수준의 독립적인 학습 단위로 나누세요.
-- 너무 잘게 쪼개지 말고, 하나의 개념이 1~3분 학습 분량이 되도록 하세요.
-- bloomLevel: 해당 개념을 완전히 이해하려면 필요한 인지 수준
+- output에는 학습 concept만 포함하세요. "개요", "핵심 아이디어", "체크리스트", "자주 하는 실수", "대표 문제", "예제", "다음 노트"는 별도 concept로 만들지 말고 인접 concept에 흡수하세요.
+- 여러 h2/h3 섹션을 하나의 concept로 합쳐도 됩니다.
+- title은 구체적이고 독립적이어야 합니다. 금지 예시: "개요", "정리", "체크리스트", "대표 문제".
+- concept는 보통 2~6분 학습 분량, 챕터 전체는 보통 5~15개 concept를 목표로 하세요.
+- prerequisites에는 이 챕터 안의 선수 concept 제목만 넣으세요.
+- bloomLevel은 해당 개념을 완전히 이해하려면 필요한 인지 수준
   (1=기억, 2=이해, 3=적용, 4=분석, 5=평가, 6=창조)
+- 정의/용어 중심은 1-2, 구현/문제 해결은 3, 비교/선택 기준은 4 이상을 우선 고려하세요.
 
 다음 JSON 형식으로만 응답해주세요:
 {
@@ -282,11 +298,68 @@ ${fileContent}
     {
       "title": "개념 제목",
       "content": "해당 개념의 핵심 내용 요약 (마크다운, 원본 내용 기반)",
-      "bloomLevel": 1,
-      "order": 1
+      "bloomLevel": 2,
+      "order": 1,
+      "kind": "concept",
+      "prerequisites": ["선수 개념 제목"],
+      "estimatedMinutes": 4,
+      "assessable": true,
+      "sourceSections": ["원본 섹션 제목"]
     }
   ]
 }`;
+}
+
+export function refineConceptsPrompt(
+  chapterTitle: string,
+  sourceContent: string,
+  draftConceptsJson: string
+): string {
+  return `<task>
+1차 concept 후보를 스터디 플래너용 최종 concept 세트로 정제하라.
+</task>
+
+<input>
+<chapter_title>${chapterTitle}</chapter_title>
+
+<draft_concepts>
+${draftConceptsJson}
+</draft_concepts>
+
+<source_content>
+${sourceContent}
+</source_content>
+</input>
+
+<rules>
+1. output에는 학습 concept만 남긴다. support 성격의 항목은 인접 concept content에 흡수한다.
+2. title은 반드시 구체적이고 독립적이어야 한다. 금지 예시: 개요, 핵심 아이디어, 체크리스트, 대표 문제, 정리, 예시.
+3. 여러 초안 concept를 묶어 더 좋은 concept로 재구성해도 된다.
+4. 선수지식 순서로 재정렬한다.
+5. 챕터 전체는 보통 5~15개 concept를 목표로 하되, 자연스럽게 더 적을 수 있다.
+6. bloomLevel이 전부 같아지지 않도록 내용에 맞게 분산한다.
+7. source content에 없는 사실은 추가하지 않는다.
+</rules>
+
+<output_format>
+{
+  "concepts": [
+    {
+      "title": "개념 제목",
+      "content": "핵심 요약",
+      "bloomLevel": 2,
+      "order": 1,
+      "kind": "concept",
+      "prerequisites": [],
+      "estimatedMinutes": 4,
+      "assessable": true,
+      "sourceSections": ["원본 섹션 제목"]
+    }
+  ]
+}
+</output_format>
+
+<important>설명 없이 JSON만 출력하라.</important>`;
 }
 
 export function learnConceptPrompt(concept: string, context: string): string {
