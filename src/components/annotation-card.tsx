@@ -9,12 +9,13 @@ import Link from "next/link";
 interface AnnotationCardProps {
   annotation: {
     id: string;
+    type: "highlight" | "memo";
     selectedText: string;
     note: string | null;
     color: string;
     createdAt: string;
   };
-  onUpdate: (id: string, data: { note?: string }) => void;
+  onUpdate: (id: string, data: { note?: string | null }) => void | Promise<void>;
   onDelete: (id: string) => void;
   showOrigin?: boolean;
   originLink?: string;
@@ -61,7 +62,7 @@ export function AnnotationCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleSave = () => {
-    onUpdate(annotation.id, { note: editNote.trim() || undefined });
+    onUpdate(annotation.id, { note: editNote.trim() || null });
     setEditing(false);
   };
 
@@ -85,6 +86,12 @@ export function AnnotationCard({
           <blockquote className="text-sm italic text-muted-foreground leading-relaxed">
             &ldquo;{annotation.selectedText}&rdquo;
           </blockquote>
+
+          <div className="mt-2">
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+              {annotation.type === "memo" ? "메모" : "형광펜"}
+            </span>
+          </div>
 
           {editing ? (
             <div className="mt-2 space-y-2">
@@ -122,17 +129,19 @@ export function AnnotationCard({
                   </Button>
                 </Link>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="size-7 p-0"
-                onClick={() => {
-                  setEditing(true);
-                  setEditNote(annotation.note ?? "");
-                }}
-              >
-                <Pencil className="size-3.5" />
-              </Button>
+              {annotation.type === "memo" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-7 p-0"
+                  onClick={() => {
+                    setEditing(true);
+                    setEditNote(annotation.note ?? "");
+                  }}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

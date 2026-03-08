@@ -24,6 +24,7 @@ interface ConceptInfo {
   title: string;
   bloomLevel: number;
   order: number;
+  annotationCount: number;
   progress: {
     mastery: number;
     bloomLevelReached: number;
@@ -42,6 +43,7 @@ interface ChapterInfo {
   reviewDue: number;
   needsRelearning: number;
   progress: number;
+  annotationCount: number;
   concepts: ConceptInfo[];
 }
 
@@ -283,6 +285,12 @@ export default function ProjectDetailPage() {
                             재학습 {chapter.needsRelearning}
                           </Badge>
                         )}
+                        {chapter.annotationCount > 0 && (
+                          <Badge variant="outline" className="gap-1">
+                            <StickyNote className="size-3" />
+                            메모 {chapter.annotationCount}
+                          </Badge>
+                        )}
                       </div>
                       <div>
                         <CardTitle className="text-lg leading-6">
@@ -356,24 +364,32 @@ export default function ProjectDetailPage() {
                                 : "아직 학습 전"}
                             </div>
                           </div>
-                          {concept.progress ? (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "ml-3 shrink-0 rounded-full",
-                                bloomColors[concept.progress.bloomLevelReached] || ""
-                              )}
-                            >
-                              {bloomLabels[concept.progress.bloomLevelReached]}
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="ml-3 shrink-0 rounded-full text-muted-foreground"
-                            >
-                              미학습
-                            </Badge>
-                          )}
+                          <div className="ml-3 flex shrink-0 items-center gap-1.5">
+                            {concept.annotationCount > 0 && (
+                              <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                                <StickyNote className="size-3" />
+                                {concept.annotationCount}
+                              </span>
+                            )}
+                            {concept.progress ? (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "rounded-full",
+                                  bloomColors[concept.progress.bloomLevelReached] || ""
+                                )}
+                              >
+                                {bloomLabels[concept.progress.bloomLevelReached]}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="rounded-full text-muted-foreground"
+                              >
+                                미학습
+                              </Badge>
+                            )}
+                          </div>
                         </Link>
                       ))}
                     </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { MessageSquareText } from "lucide-react";
 import { AnnotationCard } from "./annotation-card";
 
 interface Annotation {
   id: string;
+  type: "highlight" | "memo";
   selectedText: string;
   note: string | null;
   color: string;
@@ -13,30 +14,21 @@ interface Annotation {
 }
 
 interface AnnotationPanelProps {
-  conceptId: string;
+  annotations: Annotation[];
+  onUpdate: (id: string, data: { note?: string | null }) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   refreshKey?: number;
 }
 
 export function AnnotationPanel({
-  conceptId,
+  annotations,
+  onUpdate,
+  onDelete,
   refreshKey,
 }: AnnotationPanelProps) {
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const controllerRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    controllerRef.current?.abort();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-
-    fetch(`/api/annotations?conceptId=${conceptId}`, { signal: controller.signal })
-      .then((res) => res.ok ? res.json() : [])
-      .then(setAnnotations)
-      .catch(() => {});
-
-    return () => controller.abort();
-  }, [conceptId, refreshKey]);
+  const highlights = annotations.filter((annotation) => annotation.type === "highlight");
+  const memos = annotations.filter((annotation) => annotation.type === "memo");
 
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
@@ -44,27 +36,6 @@ export function AnnotationPanel({
       return () => window.clearTimeout(id);
     }
   }, [refreshKey]);
-
-  const handleUpdate = async (id: string, data: { note?: string }) => {
-    const res = await fetch(`/api/annotations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setAnnotations((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, ...updated } : a))
-      );
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    const res = await fetch(`/api/annotations/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setAnnotations((prev) => prev.filter((a) => a.id !== id));
-    }
-  };
 
   const count = annotations.length;
 
@@ -83,14 +54,37 @@ export function AnnotationPanel({
 
       {isOpen && (
         <div className="mt-2 space-y-3">
-          {annotations.map((a) => (
-            <AnnotationCard
-              key={a.id}
-              annotation={a}
-              onUpdate={handleUpdate}
-              onDelete={handleDelete}
-            />
-          ))}
+          {memos.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                메모
+              </div>
+              {memos.map((annotation) => (
+                <AnnotationCard
+                  key={annotation.id}
+                  annotation={annotation}
+                  onUpdate={onUpdate}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+          )}
+
+          {highlights.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                형광펜
+              </div>
+              {highlights.map((annotation) => (
+                <AnnotationCard
+                  key={annotation.id}
+                  annotation={annotation}
+                  onUpdate={onUpdate}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+          )}
 
           {annotations.length === 0 && (
             <p className="py-3 text-center text-sm text-muted-foreground">

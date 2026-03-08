@@ -3,13 +3,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, ArrowLeft, StickyNote } from "lucide-react";
+import { BookOpen, ArrowLeft, StickyNote, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AnnotationCard } from "@/components/annotation-card";
 
 interface AnnotationWithOrigin {
   id: string;
+  type: "highlight" | "memo";
   selectedText: string;
   note: string | null;
   color: string;
@@ -26,12 +27,33 @@ interface AnnotationWithOrigin {
   };
 }
 
+type ColorFilter = "all" | "yellow" | "blue" | "green" | "pink";
+type TypeFilter = "all" | "memo" | "highlight";
+type SortOrder = "newest" | "oldest";
+
+const colorOptions: { value: ColorFilter; label: string; bg: string }[] = [
+  { value: "all", label: "전체", bg: "" },
+  { value: "yellow", label: "노랑", bg: "bg-yellow-300" },
+  { value: "blue", label: "파랑", bg: "bg-blue-300" },
+  { value: "green", label: "초록", bg: "bg-green-300" },
+  { value: "pink", label: "분홍", bg: "bg-pink-300" },
+];
+
+const typeOptions: { value: TypeFilter; label: string }[] = [
+  { value: "all", label: "전체" },
+  { value: "memo", label: "메모만" },
+  { value: "highlight", label: "형광펜만" },
+];
+
 export default function AnnotationsPage() {
   const params = useParams();
   const slug = params.slug as string;
   const [annotations, setAnnotations] = useState<AnnotationWithOrigin[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterChapter, setFilterChapter] = useState<string>("all");
+  const [filterColor, setFilterColor] = useState<ColorFilter>("all");
+  const [filterType, setFilterType] = useState<TypeFilter>("all");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
 
   useEffect(() => {
     fetch(`/api/annotations?projectSlug=${slug}`)
@@ -51,15 +73,21 @@ export default function AnnotationsPage() {
   }, [annotations]);
 
   const filtered = useMemo(() => {
-    if (filterChapter === "all") return annotations;
-    return annotations.filter((a) => a.concept.chapter.id === filterChapter);
-  }, [annotations, filterChapter]);
+    return annotations.filter((a) => {
+      if (filterChapter !== "all" && a.concept.chapter.id !== filterChapter) return false;
+      if (filterColor !== "all" && a.color !== filterColor) return false;
+      if (filterType === "memo" && a.type !== "memo") return false;
+      if (filterType === "highlight" && a.type !== "highlight") return false;
+      return true;
+    });
+  }, [annotations, filterChapter, filterColor, filterType]);
 
   const grouped = useMemo(() => {
     const map = new Map<
       string,
       {
         chapter: { id: string; title: string; order: number };
+        earliestCreatedAt: string;
         concepts: Map<
           string,
           {
@@ -75,10 +103,18 @@ export default function AnnotationsPage() {
       if (!map.has(chKey)) {
         map.set(chKey, {
           chapter: a.concept.chapter,
+          earliestCreatedAt: a.createdAt,
           concepts: new Map(),
         });
       }
       const chGroup = map.get(chKey)!;
+      // Track earliest/latest for group sorting
+      if (sortOrder === "newest") {
+        if (a.createdAt > chGroup.earliestCreatedAt) chGroup.earliestCreatedAt = a.createdAt;
+      } else {
+        if (a.createdAt < chGroup.earliestCreatedAt) chGroup.earliestCreatedAt = a.createdAt;
+      }
+
       const coKey = a.concept.id;
       if (!chGroup.concepts.has(coKey)) {
         chGroup.concepts.set(coKey, {
@@ -89,17 +125,27 @@ export default function AnnotationsPage() {
       chGroup.concepts.get(coKey)!.items.push(a);
     }
 
-    return Array.from(map.values())
-      .sort((a, b) => a.chapter.order - b.chapter.order)
-      .map((ch) => ({
-        ...ch,
-        concepts: Array.from(ch.concepts.values()).sort(
-          (a, b) => a.concept.order - b.concept.order
-        ),
-      }));
-  }, [filtered]);
+    const sortFn = (a: string, b: string) =>
+      sortOrder === "newest" ? b.localeCompare(a) : a.localeCompare(b);
 
-  const handleUpdate = async (id: string, data: { note?: string }) => {
+    return Array.from(map.values())
+      .sort((a, b) => sortFn(a.earliestCreatedAt, b.earliestCreatedAt))
+      .map((ch) => ({
+        chapter: ch.chapter,
+        concepts: Array.from(ch.concepts.values())
+          .map((co) => ({
+            ...co,
+            items: [...co.items].sort((a, b) => sortFn(a.createdAt, b.createdAt)),
+          }))
+          .sort((a, b) => {
+            const aTime = a.items[0]?.createdAt ?? "";
+            const bTime = b.items[0]?.createdAt ?? "";
+            return sortFn(aTime, bTime);
+          }),
+      }));
+  }, [filtered, sortOrder]);
+
+  const handleUpdate = async (id: string, data: { note?: string | null }) => {
     const res = await fetch(`/api/annotations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -124,6 +170,8 @@ export default function AnnotationsPage() {
     return <div className="text-muted-foreground">Loading...</div>;
   }
 
+  const hasActiveFilter = filterChapter !== "all" || filterColor !== "all" || filterType !== "all";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -139,12 +187,24 @@ export default function AnnotationsPage() {
               <h1 className="text-2xl font-bold">메모함</h1>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              총 {annotations.length}개
+              {hasActiveFilter
+                ? `총 ${annotations.length}개 중 ${filtered.length}개`
+                : `총 ${annotations.length}개`}
             </p>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-sm"
+          onClick={() => setSortOrder((s) => (s === "newest" ? "oldest" : "newest"))}
+        >
+          <ArrowUpDown className="size-3.5" />
+          {sortOrder === "newest" ? "최신순" : "오래된순"}
+        </Button>
       </div>
 
+      {/* Chapter filter */}
       {chapters.length > 1 && (
         <div className="flex flex-wrap gap-2">
           <Button
@@ -169,6 +229,40 @@ export default function AnnotationsPage() {
         </div>
       )}
 
+      {/* Color + Type filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-1.5">
+          {colorOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setFilterColor(opt.value)}
+              className={`flex size-7 items-center justify-center rounded-full border-2 text-xs transition-all ${
+                filterColor === opt.value
+                  ? "border-foreground scale-110"
+                  : "border-transparent hover:border-muted-foreground/40"
+              } ${opt.bg || "bg-muted"}`}
+              title={opt.label}
+            >
+              {opt.value === "all" && <span className="text-muted-foreground">All</span>}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1">
+          {typeOptions.map((opt) => (
+            <Button
+              key={opt.value}
+              variant={filterType === opt.value ? "default" : "outline"}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setFilterType(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {annotations.length === 0 ? (
         <div className="py-16 text-center">
           <StickyNote className="mx-auto size-12 text-muted-foreground/30" />
@@ -184,6 +278,10 @@ export default function AnnotationsPage() {
               학습하러 가기
             </Button>
           </Link>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-12 text-center">
+          <p className="text-muted-foreground">필터 조건에 맞는 항목이 없습니다.</p>
         </div>
       ) : (
         <div className="space-y-8">

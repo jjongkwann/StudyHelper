@@ -71,6 +71,7 @@ model Concept {
   quizAttempts   QuizAttempt[]
   learnJob       LearnJob?
   annotations    ConceptAnnotation[]
+  userNote       ConceptUserNote?
 }
 
 model LearnJob {
@@ -134,17 +135,29 @@ model QuizAttempt {
   concept Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
 }
 
+model ConceptUserNote {
+  id          String   @id @default(cuid())
+  conceptId   String   @unique
+  userSummary String
+  updatedAt   DateTime @updatedAt
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+}
+
 model ConceptAnnotation {
   id           String   @id @default(cuid())
   conceptId    String
+  type         String   @default("highlight")
   selectedText String
   note         String?
   color        String   @default("yellow")
   anchor       String?
+  startOffset  Int?
+  endOffset    Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
 
-  @@index([conceptId])
+  @@index([conceptId, type])
 }

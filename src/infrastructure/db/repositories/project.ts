@@ -118,7 +118,10 @@ export const projectRepo = {
           include: {
             concepts: {
               orderBy: { order: "asc" },
-              include: { studyProgress: true },
+              include: {
+                studyProgress: true,
+                _count: { select: { annotations: true } },
+              },
             },
           },
         },
@@ -149,12 +152,16 @@ export const projectRepo = {
         reviewDue,
         needsRelearning,
         progress: totalConcepts > 0 ? Math.round((learnedConcepts / totalConcepts) * 100) : 0,
+        annotationCount: chapter.concepts.reduce(
+          (sum, c) => sum + c._count.annotations, 0
+        ),
         concepts: chapter.concepts.map((c) => ({
           id: c.id,
           title: c.title,
           bloomLevel: c.bloomLevel,
           order: c.order,
           progress: c.studyProgress[0] || null,
+          annotationCount: c._count.annotations,
         })),
       };
     });

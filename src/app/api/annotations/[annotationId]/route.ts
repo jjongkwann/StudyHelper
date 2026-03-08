@@ -28,7 +28,7 @@ export async function PATCH(
 
   try {
     const updated = await annotationService.update(annotationId, {
-      note: typeof note === "string" ? note.trim() : undefined,
+      note: typeof note === "string" ? note.trim() : note === null ? null : undefined,
       color: color || undefined,
     });
     return NextResponse.json(updated);

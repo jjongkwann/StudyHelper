@@ -9,6 +9,11 @@ interface SelectionToolbarProps {
   onSaved: () => void;
 }
 
+interface SelectionOffsets {
+  startOffset: number;
+  endOffset: number;
+}
+
 export function SelectionToolbar({
   containerRef,
   conceptId,
@@ -23,6 +28,7 @@ export function SelectionToolbar({
 
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [selectedText, setSelectedText] = useState("");
+  const [selectionOffsets, setSelectionOffsets] = useState<SelectionOffsets | null>(null);
   const [memoNote, setMemoNote] = useState("");
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -49,6 +55,12 @@ export function SelectionToolbar({
       return;
     }
 
+    const offsets = getSelectionOffsets(containerRef.current, range);
+    if (!offsets) {
+      if (modeRef.current === "toolbar") setMode("hidden");
+      return;
+    }
+
     const rect = range.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
 
@@ -64,6 +76,7 @@ export function SelectionToolbar({
     left = Math.max(toolbarHalfWidth, Math.min(left, containerRect.width - toolbarHalfWidth));
 
     setSelectedText(text);
+    setSelectionOffsets(offsets);
     setPosition({ top, left });
     setMode("toolbar");
   }, [containerRef]);
@@ -97,25 +110,40 @@ export function SelectionToolbar({
     window.getSelection()?.removeAllRanges();
     setMode("hidden");
     setMemoNote("");
+    setSelectionOffsets(null);
   };
 
   const toggleHighlight = async () => {
+    if (!selectionOffsets) return;
     setSaving(true);
     try {
-      // Check if same text already highlighted
       const listRes = await fetch(`/api/annotations?conceptId=${conceptId}`);
-      const existing: { id: string; selectedText: string }[] = listRes.ok ? await listRes.json() : [];
-      const match = existing.find((a) => a.selectedText === selectedText);
+      const existing: {
+        id: string;
+        type: string;
+        startOffset: number | null;
+        endOffset: number | null;
+      }[] = listRes.ok ? await listRes.json() : [];
+      const match = existing.find(
+        (a) =>
+          a.type === "highlight" &&
+          a.startOffset === selectionOffsets.startOffset &&
+          a.endOffset === selectionOffsets.endOffset
+      );
 
       if (match) {
-        // Remove existing highlight
         await fetch(`/api/annotations/${match.id}`, { method: "DELETE" });
       } else {
-        // Create new highlight
         await fetch("/api/annotations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conceptId, selectedText }),
+          body: JSON.stringify({
+            conceptId,
+            type: "highlight",
+            selectedText,
+            startOffset: selectionOffsets.startOffset,
+            endOffset: selectionOffsets.endOffset,
+          }),
         });
       }
       dismiss();
@@ -126,6 +154,7 @@ export function SelectionToolbar({
   };
 
   const saveAnnotation = async (note?: string) => {
+    if (!selectionOffsets) return;
     setSaving(true);
     try {
       const res = await fetch("/api/annotations", {
@@ -133,8 +162,11 @@ export function SelectionToolbar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conceptId,
+          type: "memo",
           selectedText,
           note: note?.trim() || undefined,
+          startOffset: selectionOffsets.startOffset,
+          endOffset: selectionOffsets.endOffset,
         }),
       });
       if (res.ok) {
@@ -245,4 +277,35 @@ export function SelectionToolbar({
       )}
     </div>
   );
+}
+
+function getSelectionOffsets(
+  container: HTMLElement,
+  range: Range
+): SelectionOffsets | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  let cursor = 0;
+  let startOffset = -1;
+  let endOffset = -1;
+
+  while ((node = walker.nextNode())) {
+    const textNode = node as Text;
+    const text = textNode.textContent ?? "";
+
+    if (textNode === range.startContainer) {
+      startOffset = cursor + range.startOffset;
+    }
+    if (textNode === range.endContainer) {
+      endOffset = cursor + range.endOffset;
+    }
+
+    cursor += text.length;
+  }
+
+  if (startOffset < 0 || endOffset < 0 || startOffset >= endOffset) {
+    return null;
+  }
+
+  return { startOffset, endOffset };
 }

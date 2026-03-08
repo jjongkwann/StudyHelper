@@ -16,6 +16,18 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { SelectionToolbar } from "@/components/selection-toolbar";
 import { AnnotationPanel } from "@/components/annotation-panel";
+import { UserNoteSection } from "@/components/user-note-section";
+
+interface Annotation {
+  id: string;
+  type: "highlight" | "memo";
+  selectedText: string;
+  note: string | null;
+  color: string;
+  startOffset: number | null;
+  endOffset: number | null;
+  createdAt: string;
+}
 
 interface Concept {
   id: string;
@@ -61,8 +73,15 @@ export default function ChapterLearnPage() {
   } | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationRefreshKey, setAnnotationRefreshKey] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLDivElement>(null);
+  const originalArticleHtmlRef = useRef("");
+  const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
+  const [memoPopoverPos, setMemoPopoverPos] = useState({ top: 0, left: 0 });
+  const [memoDraft, setMemoDraft] = useState("");
+  const currentConcept = chapter?.concepts[currentConceptIndex] ?? null;
 
   useEffect(() => {
     setLoadingChapter(true);
@@ -135,29 +154,43 @@ export default function ChapterLearnPage() {
     });
   }, [chapter, currentConceptIndex]);
 
-  // Apply visual highlights to rendered content
+  const fetchAnnotations = useCallback(async (conceptId: string) => {
+    const res = await fetch(`/api/annotations?conceptId=${conceptId}`);
+    if (!res.ok) {
+      setAnnotations([]);
+      return;
+    }
+    const data = (await res.json()) as Annotation[];
+    setAnnotations(data);
+  }, []);
+
   useEffect(() => {
-    const container = contentRef.current;
     const concept = chapter?.concepts[currentConceptIndex];
-    if (!container || !concept || !learnContent) return;
+    if (!concept) return;
+    setActiveMemoId(null);
+    void fetchAnnotations(concept.id);
+  }, [chapter, currentConceptIndex, fetchAnnotations, annotationRefreshKey]);
 
-    const controller = new AbortController();
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || !learnContent || !currentConcept) return;
 
-    fetch(`/api/annotations?conceptId=${concept.id}`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((annotations: { selectedText: string; color: string }[]) => {
-        clearHighlights(container);
-        for (const a of annotations) {
-          applyHighlight(container, a.selectedText, a.color);
-        }
-      })
-      .catch(() => {});
+    originalArticleHtmlRef.current = article.innerHTML;
+  }, [learnContent, currentConcept]);
 
-    return () => {
-      controller.abort();
-      clearHighlights(container);
-    };
-  }, [chapter, currentConceptIndex, learnContent, annotationRefreshKey]);
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || !learnContent || !originalArticleHtmlRef.current) return;
+
+    article.innerHTML = originalArticleHtmlRef.current;
+    renderAnnotations(article, annotations, {
+      onMemoOpen: (annotation, position) => {
+        setActiveMemoId(annotation.id);
+        setMemoDraft(annotation.note ?? "");
+        setMemoPopoverPos(position);
+      },
+    });
+  }, [annotations, learnContent]);
 
   const handleCheckAnswer = async () => {
     if (!learnContent?.checkQuestion || !answer.trim() || !chapter) return;
@@ -207,6 +240,37 @@ export default function ChapterLearnPage() {
     }
   };
 
+  const handleAnnotationUpdate = useCallback(
+    async (id: string, data: { note?: string | null }) => {
+      const res = await fetch(`/api/annotations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) return;
+      const updated = (await res.json()) as Annotation;
+      setAnnotations((prev) =>
+        prev.map((annotation) =>
+          annotation.id === id ? { ...annotation, ...updated } : annotation
+        )
+      );
+      if (activeMemoId === id) {
+        setMemoDraft(updated.note ?? "");
+      }
+    },
+    [activeMemoId]
+  );
+
+  const handleAnnotationDelete = useCallback(async (id: string) => {
+    const res = await fetch(`/api/annotations/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    setAnnotations((prev) => prev.filter((annotation) => annotation.id !== id));
+    if (activeMemoId === id) {
+      setActiveMemoId(null);
+      setMemoDraft("");
+    }
+  }, [activeMemoId]);
+
   if (loadingChapter) {
     return <div className="text-muted-foreground">Loading...</div>;
   }
@@ -215,7 +279,10 @@ export default function ChapterLearnPage() {
     return <div className="text-destructive">챕터를 찾을 수 없습니다.</div>;
   }
 
-  const currentConcept = chapter.concepts[currentConceptIndex];
+  const activeMemo =
+    activeMemoId
+      ? annotations.find((annotation) => annotation.id === activeMemoId) ?? null
+      : null;
 
   return (
     <div className="space-y-6">
@@ -350,7 +417,7 @@ export default function ChapterLearnPage() {
               </div>
             ) : learnContent ? (
               <>
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div ref={articleRef} className="prose prose-sm max-w-none dark:prose-invert">
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                     {learnContent.explanation}
                   </ReactMarkdown>
@@ -449,13 +516,67 @@ export default function ChapterLearnPage() {
                 </div>
               </>
             ) : null}
+
+            {activeMemo && (
+              <div
+                className="absolute z-40 w-72 rounded-xl border border-border/60 bg-popover p-3 shadow-xl"
+                style={{
+                  top: memoPopoverPos.top,
+                  left: memoPopoverPos.left,
+                  transform: "translateX(-50%)",
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold text-muted-foreground">메모</div>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setActiveMemoId(null)}
+                  >
+                    닫기
+                  </button>
+                </div>
+                <blockquote className="mb-3 border-l-2 border-primary/30 pl-2 text-xs italic text-muted-foreground">
+                  {activeMemo.selectedText}
+                </blockquote>
+                <Textarea
+                  value={memoDraft}
+                  onChange={(e) => setMemoDraft(e.target.value)}
+                  rows={4}
+                  placeholder="메모를 입력하세요..."
+                />
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleAnnotationDelete(activeMemo.id)}
+                  >
+                    삭제
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      handleAnnotationUpdate(activeMemo.id, {
+                        note: memoDraft.trim() || null,
+                      })
+                    }
+                  >
+                    저장
+                  </Button>
+                </div>
+              </div>
+            )}
             </div>
 
             {currentConcept && learnContent && (
               <>
                 <Separator />
+                <UserNoteSection conceptId={currentConcept.id} />
+                <Separator />
                 <AnnotationPanel
-                  conceptId={currentConcept.id}
+                  annotations={annotations}
+                  onUpdate={handleAnnotationUpdate}
+                  onDelete={handleAnnotationDelete}
                   refreshKey={annotationRefreshKey}
                 />
               </>
@@ -474,48 +595,141 @@ const highlightColors: Record<string, string> = {
   pink: "#fbcfe8",
 };
 
-function clearHighlights(container: HTMLElement) {
-  container.querySelectorAll("mark[data-annotation-hl]").forEach((mark) => {
-    const parent = mark.parentNode;
-    if (parent) {
-      parent.replaceChild(
-        document.createTextNode(mark.textContent || ""),
-        mark
-      );
-      parent.normalize();
+function renderAnnotations(
+  container: HTMLElement,
+  annotations: Annotation[],
+  options: {
+    onMemoOpen: (
+      annotation: Annotation,
+      position: { top: number; left: number }
+    ) => void;
+  }
+) {
+  const ordered = [...annotations]
+    .filter(
+      (annotation) =>
+        annotation.startOffset !== null &&
+        annotation.endOffset !== null &&
+        annotation.startOffset < annotation.endOffset
+    )
+    .sort((a, b) => {
+      const aLen = (a.endOffset ?? 0) - (a.startOffset ?? 0);
+      const bLen = (b.endOffset ?? 0) - (b.startOffset ?? 0);
+      if (bLen !== aLen) return bLen - aLen;
+      if (a.startOffset !== b.startOffset) {
+        return (a.startOffset ?? 0) - (b.startOffset ?? 0);
+      }
+      if (a.type === b.type) return 0;
+      return a.type === "highlight" ? -1 : 1;
+    });
+
+  for (const annotation of ordered) {
+    const range = createRangeFromOffsets(
+      container,
+      annotation.startOffset ?? 0,
+      annotation.endOffset ?? 0
+    );
+    if (!range) continue;
+
+    if (annotation.type === "highlight") {
+      wrapRangeWithHighlight(range, annotation.color);
+      continue;
     }
-  });
+
+    wrapRangeWithMemo(range, annotation, container, options.onMemoOpen);
+  }
 }
 
-function applyHighlight(
+function createRangeFromOffsets(
   container: HTMLElement,
-  text: string,
-  color: string
+  startOffset: number,
+  endOffset: number
 ) {
-  const walker = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT
-  );
-  let node: Text | null;
-  while ((node = walker.nextNode() as Text | null)) {
-    const idx = (node.textContent || "").indexOf(text);
-    if (idx === -1) continue;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  let cursor = 0;
+  let startNode: Text | null = null;
+  let endNode: Text | null = null;
+  let startNodeOffset = 0;
+  let endNodeOffset = 0;
 
-    const range = document.createRange();
-    range.setStart(node, idx);
-    range.setEnd(node, idx + text.length);
+  while ((node = walker.nextNode())) {
+    const textNode = node as Text;
+    const length = textNode.textContent?.length ?? 0;
+    const nextCursor = cursor + length;
 
-    const mark = document.createElement("mark");
-    mark.setAttribute("data-annotation-hl", "");
-    mark.style.backgroundColor = highlightColors[color] || highlightColors.yellow;
-    mark.style.borderRadius = "2px";
-    mark.style.padding = "0 1px";
-
-    try {
-      range.surroundContents(mark);
-    } catch {
-      // surroundContents fails if range crosses element boundaries — skip
+    if (!startNode && startOffset >= cursor && startOffset <= nextCursor) {
+      startNode = textNode;
+      startNodeOffset = startOffset - cursor;
     }
-    break;
+
+    if (!endNode && endOffset >= cursor && endOffset <= nextCursor) {
+      endNode = textNode;
+      endNodeOffset = endOffset - cursor;
+    }
+
+    cursor = nextCursor;
   }
+
+  if (!startNode || !endNode) return null;
+
+  const range = document.createRange();
+  range.setStart(startNode, startNodeOffset);
+  range.setEnd(endNode, endNodeOffset);
+  return range;
+}
+
+function wrapRangeWithHighlight(range: Range, color: string) {
+  const mark = document.createElement("mark");
+  mark.setAttribute("data-annotation-hl", "");
+  mark.style.backgroundColor = highlightColors[color] || highlightColors.yellow;
+  mark.style.borderRadius = "2px";
+  mark.style.padding = "0 1px";
+
+  try {
+    const fragment = range.extractContents();
+    mark.appendChild(fragment);
+    range.insertNode(mark);
+  } catch {}
+}
+
+function wrapRangeWithMemo(
+  range: Range,
+  annotation: Annotation,
+  container: HTMLElement,
+  onMemoOpen: (
+    annotation: Annotation,
+    position: { top: number; left: number }
+  ) => void
+) {
+  const span = document.createElement("span");
+  span.className = "annotation-memo-target";
+  span.setAttribute("data-annotation-memo", annotation.id);
+
+  const icon = document.createElement("button");
+  icon.type = "button";
+  icon.className = "annotation-memo-icon";
+  icon.textContent = "✎";
+
+  const openPopover = () => {
+    const iconRect = icon.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    onMemoOpen(annotation, {
+      top: iconRect.bottom - containerRect.top + 8,
+      left: iconRect.left - containerRect.left + iconRect.width / 2,
+    });
+  };
+
+  icon.addEventListener("mouseenter", openPopover);
+  icon.addEventListener("click", (event) => {
+    event.preventDefault();
+    openPopover();
+  });
+
+  try {
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    span.appendChild(icon);
+    range.insertNode(span);
+  } catch {}
 }

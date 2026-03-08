@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { annotationService } from "@/application/annotation/service";
 
 const VALID_COLORS = new Set(["yellow", "blue", "green", "pink"]);
+const VALID_TYPES = new Set(["highlight", "memo"]);
 const MAX_TEXT_LENGTH = 2000;
 const MAX_NOTE_LENGTH = 5000;
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { conceptId, selectedText, note, color } = body;
+  const { conceptId, type, selectedText, note, color, startOffset, endOffset } = body;
 
   if (!conceptId || typeof selectedText !== "string" || !selectedText.trim()) {
     return NextResponse.json(
@@ -37,11 +38,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!type || !VALID_TYPES.has(type)) {
+    return NextResponse.json(
+      { error: `type must be one of: ${[...VALID_TYPES].join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  if (
+    (startOffset !== undefined && (!Number.isInteger(startOffset) || startOffset < 0)) ||
+    (endOffset !== undefined && (!Number.isInteger(endOffset) || endOffset < 0))
+  ) {
+    return NextResponse.json(
+      { error: "startOffset and endOffset must be non-negative integers" },
+      { status: 400 }
+    );
+  }
+
+  if (
+    startOffset !== undefined &&
+    endOffset !== undefined &&
+    startOffset >= endOffset
+  ) {
+    return NextResponse.json(
+      { error: "startOffset must be smaller than endOffset" },
+      { status: 400 }
+    );
+  }
+
   const annotation = await annotationService.create({
     conceptId,
+    type,
     selectedText: selectedText.trim(),
     note: typeof note === "string" ? note.trim() || undefined : undefined,
     color: color || undefined,
+    startOffset: startOffset ?? undefined,
+    endOffset: endOffset ?? undefined,
   });
 
   return NextResponse.json(annotation, { status: 201 });
