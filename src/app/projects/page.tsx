@@ -212,9 +212,24 @@ export default function ProjectsPage() {
   };
 
   const handleRetry = async (project: ProjectSummary) => {
-    await fetch(`/api/projects/${project.slug}/retry`, {
+    const actionLabel = project.status === "failed" ? "재시도" : "재정리";
+    const confirmed = window.confirm(
+      project.status === "failed"
+        ? `"${project.name}" 프로젝트의 임포트를 다시 시도할까요?`
+        : `"${project.name}" 프로젝트를 현재 규칙으로 다시 생성할까요?\n프로젝트는 유지되고, 챕터/개념 내용은 새 결과로 교체됩니다.`
+    );
+    if (!confirmed) return;
+
+    const response = await fetch(`/api/projects/${project.slug}/retry`, {
       method: "POST",
     });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      window.alert(data?.error || `${actionLabel}를 시작하지 못했습니다.`);
+      return;
+    }
+
     fetchProjects();
   };
 
@@ -451,6 +466,7 @@ export default function ProjectsPage() {
             const isProcessing =
               project.status === "pending" || project.status === "processing";
             const isFailed = project.status === "failed";
+            const canReimport = isReady || isFailed;
             const deleting = deletingSlug === project.slug;
 
             return (
@@ -504,7 +520,7 @@ export default function ProjectsPage() {
                           <Edit3 className="size-4" />
                           수정
                         </DropdownMenuItem>
-                        {isFailed && (
+                        {canReimport && (
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
@@ -512,7 +528,7 @@ export default function ProjectsPage() {
                             }}
                           >
                             <RotateCcw className="size-4" />
-                            재시도
+                            {isFailed ? "재시도" : "재정리"}
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />

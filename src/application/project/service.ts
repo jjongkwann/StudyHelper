@@ -65,14 +65,18 @@ export const projectService = {
     return { ok: true as const };
   },
 
-  /** Retry a failed import */
+  /** Re-run import for an existing project without deleting the project itself */
   async retry(slug: string) {
     const project = await projectRepo.findBySlug(slug);
     if (!project) return { error: "not_found" as const };
-    if (project.status !== "failed") return { error: "not_failed" as const };
+    if (project.status === "pending" || project.status === "processing") {
+      return { error: "busy" as const };
+    }
+
+    const mode = project.status === "failed" ? "retry" : "refresh";
 
     await projectRepo.updateStatus(project.id, "pending", {
-      importStep: "재시도 준비 중...",
+      importStep: mode === "retry" ? "재시도 준비 중..." : "재정리 준비 중...",
       importProgress: 0,
       errorMessage: null,
     });
@@ -81,6 +85,11 @@ export const projectService = {
       console.error("Retry import error:", err);
     });
 
-    return { id: project.id, slug: project.slug, status: "pending" as const };
+    return {
+      id: project.id,
+      slug: project.slug,
+      status: "pending" as const,
+      mode,
+    };
   },
 };

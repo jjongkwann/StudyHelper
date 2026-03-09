@@ -109,6 +109,11 @@ export async function runImportWorkflow(
       );
     }
 
+    await chapterRepo.deleteMissingByProjectId(
+      projectId,
+      state.chapters.map((chapter) => chapter.order)
+    );
+
     // -- finalize --
     const finalJob = await importJobRepo.create(projectId, "finalize");
     await importJobRepo.start(finalJob.id);
@@ -151,12 +156,7 @@ async function executeStep(
   }
 }
 
-/** Retry a failed import: cleans up partial data and re-runs from scratch */
+/** Re-run import for an existing project, replacing chapters/concepts in place when possible */
 export async function retryImportWorkflow(projectId: string) {
-  // Clean up previous import data
-  await chapterRepo.deleteByProjectId(projectId);
-  await importJobRepo.deleteByProject(projectId);
-
-  // Re-run from scratch
   await runImportWorkflow(projectId);
 }

@@ -53,12 +53,17 @@ const SUPPORT_SECTION_TITLES = new Set([
   "핵심 원리",
   "연산 복잡도",
   "시간 복잡도",
+  "분석 규칙",
   "구성 요소",
   "읽기 과정",
+  "접근법",
+  "실무 적용",
+  "현대적 발전",
   "백엔드 활용",
   "백엔드 사용 사례",
   "사용하는 시스템",
   "실세계 사용",
+  "다음 챕터",
   "cap 정리와의 관계",
   "false positive 확률",
   "그리디 vs dp",
@@ -73,6 +78,7 @@ const SUPPORT_SECTION_PREFIXES = [
   "대표 기출 문제",
   "체크리스트",
   "자주 하는 실수",
+  "다음 챕터",
   "다음 노트",
   "제출 전 ",
 ];
@@ -796,9 +802,9 @@ function needsConceptRepair(concepts: ConceptPlan[]): boolean {
 
   return (
     summary.total === 0
-    || summary.total > 18
+    || summary.total > 15
     || summary.supportRatio > 0.2
-    || summary.shortContentRatio > 0.45
+    || summary.shortContentRatio > 0.35
     || (summary.uniformBloom && summary.total > 4)
   );
 }
@@ -833,7 +839,7 @@ export async function persistChapter(state: ImportState): Promise<ImportState> {
     chapterFiles.map((f) => parseMarkdownFile(f, state.basePath))
   );
 
-  await chapterRepo.createWithConcepts({
+  await chapterRepo.upsertWithConcepts({
     projectId: state.projectId,
     title: chapter.title,
     order: chapter.order,

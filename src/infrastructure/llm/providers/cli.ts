@@ -1,6 +1,41 @@
 import { spawn } from "child_process";
 import type { LLMProvider, LLMOptions } from "../types";
 
+function parseStructuredOutput(stdout: string): string {
+  const trimmed = stdout.trim();
+  if (!trimmed) return trimmed;
+
+  const parsed = JSON.parse(trimmed) as {
+    type?: string;
+    result?: unknown;
+    structured_output?: unknown;
+  };
+
+  if (parsed && typeof parsed === "object" && "structured_output" in parsed) {
+    if (parsed.structured_output != null) {
+      return JSON.stringify(parsed.structured_output);
+    }
+
+    if (typeof parsed.result === "string" && parsed.result.trim()) {
+      return parsed.result.trim();
+    }
+
+    throw new Error("CLI structured output missing from JSON response");
+  }
+
+  if (
+    parsed
+    && typeof parsed === "object"
+    && parsed.type === "result"
+    && typeof parsed.result === "string"
+    && parsed.result.trim()
+  ) {
+    return parsed.result.trim();
+  }
+
+  return trimmed;
+}
+
 export class CLIProvider implements LLMProvider {
   private cliPath: string;
 
@@ -19,6 +54,10 @@ export class CLIProvider implements LLMProvider {
 
     if (options?.system) {
       args.push("--system-prompt", options.system);
+    }
+    if (options?.jsonSchema) {
+      args.push("--output-format", "json");
+      args.push("--json-schema", JSON.stringify(options.jsonSchema));
     }
 
     const env = { ...process.env };
@@ -43,7 +82,15 @@ export class CLIProvider implements LLMProvider {
           reject(new Error(`CLI error (exit ${code}): ${stderr || stdout}`));
           return;
         }
-        resolve(stdout.trim());
+        try {
+          resolve(options?.jsonSchema ? parseStructuredOutput(stdout) : stdout.trim());
+        } catch (error) {
+          reject(
+            error instanceof Error
+              ? error
+              : new Error("CLI structured output parsing failed")
+          );
+        }
       });
 
       child.stdin.write(prompt);

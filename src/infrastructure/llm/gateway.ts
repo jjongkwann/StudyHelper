@@ -3,13 +3,71 @@ import type { LLMProvider, LLMOptions } from "./types";
 import { AnthropicProvider } from "./providers/anthropic";
 import { CLIProvider } from "./providers/cli";
 
+function extractBalancedJson(text: string): string | null {
+  const start = text.search(/[\[{]/);
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index++) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Strip code fences and parse JSON */
 export function safeParseJSON(text: string): unknown {
   const cleaned = text
     .replace(/```json\s*\n?/g, "")
     .replace(/```\s*$/g, "")
     .trim();
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const extracted = extractBalancedJson(cleaned);
+    if (!extracted) {
+      throw new Error("No complete JSON object found in LLM response");
+    }
+    return JSON.parse(extracted);
+  }
 }
 
 interface GenerateAndValidateOptions<T> extends LLMOptions {
@@ -51,7 +109,10 @@ export const llmGateway = {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const raw = await getProvider().generate(prompt, llmOpts);
+        const raw = await getProvider().generate(prompt, {
+          ...llmOpts,
+          jsonSchema: z.toJSONSchema(schema),
+        });
         const parsed = safeParseJSON(raw);
         return schema.parse(parsed);
       } catch (e) {

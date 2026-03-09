@@ -363,7 +363,7 @@ ${sourceContent}
 }
 
 export function learnConceptPrompt(concept: string, context: string): string {
-  return `다음 개념을 학습자에게 설명해주세요. 핵심을 구조적으로 정리하고, 실제 사례나 비유를 활용해주세요.
+  return `다음 개념을 학습자에게 설명해주세요. 핵심만 구조적으로 짧고 밀도 있게 정리하고, 필요하면 실제 사례나 비유를 활용해주세요.
 
 개념:
 ---
@@ -380,6 +380,10 @@ ${context}
 - 원문에 없는 세부 사실은 추가하지 마세요.
 - 비유는 선택 사항이며, 비유와 원문 기반 설명을 섞지 말고 분리해서 제시하세요.
 - checkQuestion은 제공된 원문만으로 답할 수 있는 질문이어야 합니다.
+- explanation은 3~5개의 짧은 소제목/문단으로 작성하고, 불필요하게 길게 쓰지 마세요.
+- keyPoints는 3~5개로 제한하세요.
+- analogy가 있으면 2문장 이내로 짧게 작성하세요.
+- expectedAnswer는 2~4문장 또는 짧은 bullet 요약 수준으로 작성하세요.
 - 수식, 시간복잡도, 수학 표현은 반드시 LaTeX로 작성하세요. 인라인은 $...$, 블록은 $$...$$를 사용하세요. 예: $O(V+E)$, $O((V+E)\\log V)$, $\\alpha(n)$
 
 다음 JSON 형식으로 응답해주세요:

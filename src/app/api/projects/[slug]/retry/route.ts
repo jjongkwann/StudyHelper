@@ -12,14 +12,25 @@ export async function POST(
     if (result.error === "not_found") {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
+    if (result.error === "busy") {
+      return NextResponse.json(
+        { error: "프로젝트 임포트가 이미 진행 중입니다" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
-      { error: "프로젝트가 실패 상태가 아닙니다" },
+      { error: "프로젝트를 다시 생성할 수 없습니다" },
       { status: 400 }
     );
   }
 
   return NextResponse.json(
-    { ...result, message: "임포트를 재시도합니다." },
+    {
+      ...result,
+      message: result.mode === "retry"
+        ? "임포트를 재시도합니다."
+        : "기존 프로젝트 내용을 재정리하여 교체합니다.",
+    },
     { status: 202 }
   );
 }

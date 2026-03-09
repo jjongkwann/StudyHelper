@@ -6,4 +6,5 @@ export interface LLMOptions {
   system?: string;
   maxTokens?: number;
   temperature?: number;
+  jsonSchema?: unknown;
 }
